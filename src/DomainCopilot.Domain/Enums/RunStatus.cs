@@ -1,10 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace DomainCopilot.Domain.Enums;
 
-namespace DomainCopilot.Domain.Enums
+public enum RunStatus
 {
-    internal class RunStatus
-    {
-    }
+    Started,
+    InProgress,
+    WaitingForApproval,
+    Approved,
+    Rejected,
+    Completed,
+    Failed
 }

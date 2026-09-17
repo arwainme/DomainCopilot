@@ -4,6 +4,12 @@
     <ProjectReference Include="..\DomainCopilot.Domain\DomainCopilot.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Agents\" />
+    <Folder Include="Services\" />
+    <Folder Include="Workflows\" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
