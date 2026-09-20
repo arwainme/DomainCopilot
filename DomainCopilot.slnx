@@ -1,8 +1,21 @@
 <Solution>
+  <Folder Name="/data/" />
+  <Folder Name="/data/chunks/" />
+  <Folder Name="/data/documents/">
+    <File Path="data/documents/citizen-services-regulations.txt" />
+  </Folder>
+  <Folder Name="/evaluation/">
+    <File Path="questions.json" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="data/documents/citizen-services-regulations.txt" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/DomainCopilot.API/DomainCopilot.API.csproj" />
     <Project Path="src/DomainCopilot.Application/DomainCopilot.Application.csproj" />
     <Project Path="src/DomainCopilot.Domain/DomainCopilot.Domain.csproj" />
     <Project Path="src/DomainCopilot.Infrastructure/DomainCopilot.Infrastructure.csproj" />
   </Folder>
+  <Project Path="tests/DomainCopilot.Domain.Tests/DomainCopilot.Domain.Tests.csproj" />
 </Solution>

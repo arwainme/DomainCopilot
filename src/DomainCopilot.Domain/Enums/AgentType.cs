@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace DomainCopilot.Domain.Enums;
 
-namespace DomainCopilot.Domain.Enums
+public enum AgentType
 {
-    internal class AgentType
-    {
-    }
+    Eligibility,
+    Procedure,
+    Response
 }

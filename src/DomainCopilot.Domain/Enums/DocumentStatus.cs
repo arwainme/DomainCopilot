@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+
 namespace DomainCopilot.Domain.Enums;
 
-public enum ApprovalStatus
+public enum DocumentStatus
 {
     Pending,
-    Approved,
-    Rejected
+    Processing,
+    Completed,
+    Failed
 }
