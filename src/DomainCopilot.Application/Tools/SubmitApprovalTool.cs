@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
 
@@ -19,16 +20,63 @@ public sealed class SubmitApprovalTool : ITool
         string input,
         CancellationToken cancellationToken = default)
     {
-        var runId = Guid.Parse(input);
+        ApprovalToolRequest? request;
 
-        var draft = new DraftResponse(
-            "Draft submitted for officer approval.",
-            Array.Empty<Citation>(),
-            true);
+        try
+        {
+            request = JsonSerializer.Deserialize<ApprovalToolRequest>(
+                input,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+        }
+        catch (JsonException)
+        {
+            return new ToolResult(
+                false,
+                "Invalid approval request.",
+                HasSideEffect: false);
+        }
+
+        if (request is null)
+        {
+            return new ToolResult(
+                false,
+                "Invalid approval request.",
+                HasSideEffect: false);
+        }
+
+        if (request.RunId == Guid.Empty)
+        {
+            return new ToolResult(
+                false,
+                "A valid run ID is required.",
+                HasSideEffect: false);
+        }
+
+        if (request.Draft is null)
+        {
+            return new ToolResult(
+                false,
+                "A draft response is required before approval submission.",
+                HasSideEffect: false);
+        }
+
+        // Approval guard:
+        // Only drafts that explicitly require officer approval
+        // may trigger this side effect.
+        if (!request.Draft.RequiresOfficerApproval)
+        {
+            return new ToolResult(
+                false,
+                "Approval submission is blocked because officer approval is not required.",
+                HasSideEffect: false);
+        }
 
         var result = await _approvalService.RequestApprovalAsync(
-            runId,
-            draft,
+            request.RunId,
+            request.Draft,
             cancellationToken);
 
         return new ToolResult(
@@ -36,4 +84,8 @@ public sealed class SubmitApprovalTool : ITool
             $"Approval request created with status: {result.Status}",
             HasSideEffect: true);
     }
+
+    private sealed record ApprovalToolRequest(
+        Guid RunId,
+        DraftResponse Draft);
 }

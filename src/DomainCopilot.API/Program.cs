@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using DomainCopilot.Application.Tools;
-
+using DomainCopilot.Application.Configuration;
 var builder = WebApplication.CreateBuilder(args);
 
 const string jwtSecret =
@@ -75,7 +75,13 @@ builder.Services.AddSingleton<LlmProviderSelector>();
 builder.Services.AddScoped<IReplayService, ReplayService>();
 builder.Services.AddSingleton<ILlmProvider>(sp =>
     sp.GetRequiredService<LlmProviderSelector>());
+builder.Services
+    .AddOptions<WorkflowOptions>()
+    .Bind(builder.Configuration.GetSection("Workflow"));
 
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<
+        Microsoft.Extensions.Options.IOptions<WorkflowOptions>>().Value);
 // OpenAPI
 builder.Services.AddOpenApi();
 

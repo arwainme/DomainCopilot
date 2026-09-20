@@ -4,6 +4,9 @@
   <Folder Name="/data/documents/">
     <File Path="data/documents/citizen-services-regulations.txt" />
   </Folder>
+  <Folder Name="/data/documents/pdf/">
+    <File Path="citizen-service-demo.html" />
+  </Folder>
   <Folder Name="/evaluation/">
     <File Path="questions.json" />
   </Folder>
