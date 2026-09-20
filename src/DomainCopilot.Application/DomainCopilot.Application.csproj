@@ -5,9 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Agents\" />
-    <Folder Include="Services\" />
-    <Folder Include="Workflows\" />
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Tools\" />
   </ItemGroup>
 
   <PropertyGroup>

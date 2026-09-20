@@ -1,12 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using DomainCopilot.Application.DTOs;
+﻿using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Application.Abstractions;
 
 public interface IAuditStore
 {
+
     Task StartRunAsync(
         Guid runId,
         CitizenQuery query,
@@ -24,6 +22,15 @@ public interface IAuditStore
         Guid runId,
         CancellationToken cancellationToken = default);
 
+    Task FailRunAsync(
+        Guid runId,
+        string reason,
+        CancellationToken cancellationToken = default);
+    Task SetStatusAsync(
+    Guid runId,
+    string status,
+    CancellationToken cancellationToken = default);
+
     Task<AuditRunDto?> GetRunAsync(
         Guid runId,
         CancellationToken cancellationToken = default);
@@ -32,10 +39,16 @@ public interface IAuditStore
 public sealed record AuditRunDto(
     Guid RunId,
     CitizenQuery Query,
+    string Status,
+    DateTime StartedAt,
+    DateTime? CompletedAt,
+    string? FailureReason,
     IReadOnlyCollection<AuditStepDto> Steps);
 
 public sealed record AuditStepDto(
+    int Sequence,
     string AgentName,
     string Action,
     string Input,
-    string Output);
+    string Output,
+    DateTime CreatedAt);

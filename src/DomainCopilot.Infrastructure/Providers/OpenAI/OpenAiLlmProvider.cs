@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
@@ -17,7 +18,17 @@ public sealed class OpenAiLlmProvider : ILlmProvider
         _httpClient = httpClient;
         _options = options.Value;
 
-        _httpClient.BaseAddress = new Uri(_options.OpenAI.BaseUrl);
+        _httpClient.BaseAddress = new Uri(
+            _options.OpenAI.BaseUrl);
+
+        if (!string.IsNullOrWhiteSpace(
+                _options.OpenAI.ApiKey))
+        {
+            _httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    _options.OpenAI.ApiKey);
+        }
     }
 
     public async Task<string> CompleteAsync(
@@ -44,8 +55,9 @@ public sealed class OpenAiLlmProvider : ILlmProvider
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(
-            cancellationToken);
+        var result =
+            await response.Content.ReadFromJsonAsync<JsonElement>(
+                cancellationToken);
 
         return result
             .GetProperty("choices")[0]
@@ -58,19 +70,84 @@ public sealed class OpenAiLlmProvider : ILlmProvider
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
-        var result = await CompleteAsync(prompt, cancellationToken);
+        var request = new
+        {
+            model = _options.OpenAI.Model,
+            messages = new[]
+            {
+            new
+            {
+                role = "user",
+                content = prompt
+            }
+        },
+            stream = true
+        };
 
-        yield return result;
+        using var httpRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "chat/completions")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream =
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
+
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var line = await reader.ReadLineAsync(
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            if (!line.StartsWith("data:"))
+                continue;
+
+            var data = line["data:".Length..].Trim();
+
+            if (data == "[DONE]")
+                yield break;
+
+            using var json = JsonDocument.Parse(data);
+
+            var content = json.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("delta")
+                .GetProperty("content");
+
+            if (content.ValueKind == JsonValueKind.String)
+            {
+                var text = content.GetString();
+
+                if (!string.IsNullOrEmpty(text))
+                    yield return text;
+            }
+        }
     }
-
     public async Task<string> CallWithToolsAsync(
         string prompt,
         IReadOnlyList<string> tools,
         CancellationToken cancellationToken = default)
     {
-        return await CompleteAsync(prompt, cancellationToken);
+        return await CompleteAsync(
+            prompt,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<float>> GenerateEmbeddingAsync(
@@ -90,8 +167,9 @@ public sealed class OpenAiLlmProvider : ILlmProvider
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(
-            cancellationToken);
+        var result =
+            await response.Content.ReadFromJsonAsync<JsonElement>(
+                cancellationToken);
 
         var embedding = result
             .GetProperty("data")[0]

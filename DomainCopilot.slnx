@@ -1,6 +1,15 @@
 <Solution>
+  <Folder Name="/data/" />
+  <Folder Name="/data/chunks/" />
+  <Folder Name="/data/documents/">
+    <File Path="data/documents/citizen-services-regulations.txt" />
+  </Folder>
+  <Folder Name="/evaluation/">
+    <File Path="questions.json" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".gitignore" />
+    <File Path="data/documents/citizen-services-regulations.txt" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/DomainCopilot.API/DomainCopilot.API.csproj" />

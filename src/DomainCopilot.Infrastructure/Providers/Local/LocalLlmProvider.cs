@@ -52,11 +52,65 @@ public sealed class LocalLlmProvider : ILlmProvider
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
-        var result = await CompleteAsync(prompt, cancellationToken);
+        var request = new
+        {
+            model = _options.Local.Model,
+            prompt,
+            stream = true
+        };
 
-        yield return result;
+        using var httpRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "api/generate")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream =
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
+
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var line = await reader.ReadLineAsync(
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            using var json = JsonDocument.Parse(line);
+
+            if (json.RootElement.TryGetProperty(
+                    "response",
+                    out var content))
+            {
+                var text = content.GetString();
+
+                if (!string.IsNullOrEmpty(text))
+                    yield return text;
+            }
+
+            if (json.RootElement.TryGetProperty(
+                    "done",
+                    out var done) &&
+                done.GetBoolean())
+            {
+                yield break;
+            }
+        }
     }
 
     public async Task<string> CallWithToolsAsync(
