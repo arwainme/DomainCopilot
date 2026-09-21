@@ -1,4 +1,4 @@
-﻿using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Application.Agents;
@@ -20,22 +20,6 @@ public sealed class ResponseDrafter : IResponseDrafter
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!eligibility.IsSupported)
-        {
-            return new AgentResult<DraftResponse>(
-                false,
-                null,
-                "A response cannot be drafted because eligibility could not be supported by the available evidence.");
-        }
-
-        if (!procedure.IsSupported)
-        {
-            return new AgentResult<DraftResponse>(
-                false,
-                null,
-                "A response cannot be drafted because the procedure could not be supported by the available evidence.");
-        }
 
         var meaningfulEvidence = evidence
             .Where(chunk => !string.IsNullOrWhiteSpace(chunk.Content))
@@ -59,42 +43,56 @@ public sealed class ResponseDrafter : IResponseDrafter
 
         var evidenceText = string.Join(
             Environment.NewLine + Environment.NewLine,
-            meaningfulEvidence.Select(x =>
-                $"[Source: {x.DocumentTitle}, Page: {x.PageNumber}]\n{x.Content}"));
+            meaningfulEvidence.Select((x, index) =>
+                $"[Evidence {index + 1}]\nSource: {x.DocumentTitle}\nLocation: {x.PageNumber}\n{x.Content}"));
 
         var procedureText = string.Join(
             Environment.NewLine,
             procedure.Steps.Select(
                 (step, index) => $"{index + 1}. {step}"));
 
+        var questionType = DetectQuestionType(query.Situation);
+
         var prompt = $"""
             You are a government response drafting agent.
 
-            Your job is ONLY to draft a cautious citizen-facing response
-            using the supplied procedure and evidence.
+            Your task is to answer the citizen's specific question using ONLY
+            the supplied government evidence and supported workflow context.
 
             STRICT RULES:
-            - Do not invent fees, deadlines, eligibility requirements,
-              documents, rights, obligations, or entitlements.
-            - Do not add facts that are not present in the evidence.
-            - If the evidence is insufficient for a specific fact, say so.
-            - Do not make a final eligibility or entitlement decision.
-            - The response must clearly state that it requires officer approval.
-            - Keep the response professional and concise.
+            - Answer the citizen's actual question directly.
+            - Do not use a generic government-service template.
+            - Do not answer unrelated topics unless they are necessary to answer the question.
+            - Do not copy large passages from the evidence.
+            - Summarize the evidence in your own words.
+            - Do not invent fees, deadlines, eligibility requirements, documents,
+              rights, obligations, or entitlements.
+            - When the evidence does not establish a fact, explicitly say that
+              the available evidence does not specify or is insufficient.
+            - Never make a final eligibility or entitlement decision.
+            - For a yes/no question, give the supported yes/no answer first.
+            - Keep the answer concise and citizen-facing.
+            - End with a short statement that the response requires officer approval.
+
+            Detected question focus:
+            {questionType}
 
             Citizen question:
             {query.Situation}
 
-            Eligibility assessment:
-            {eligibility.Explanation}
+            Eligibility context:
+            Supported: {eligibility.IsSupported}
+            Explanation: {eligibility.Explanation}
 
-            Supported procedure:
+            Procedure context:
+            Supported: {procedure.IsSupported}
+            Steps:
             {procedureText}
 
             Retrieved evidence:
             {evidenceText}
 
-            Draft the citizen-facing response now.
+            Draft ONLY the answer to the citizen's question.
             """;
 
         string responseText;
@@ -109,6 +107,7 @@ public sealed class ResponseDrafter : IResponseDrafter
         {
             responseText = BuildFallbackResponse(
                 query,
+                eligibility,
                 procedure,
                 meaningfulEvidence);
         }
@@ -117,19 +116,15 @@ public sealed class ResponseDrafter : IResponseDrafter
         {
             responseText = BuildFallbackResponse(
                 query,
+                eligibility,
                 procedure,
                 meaningfulEvidence);
         }
 
-        var response = $"""
-            {responseText.Trim()}
-
-            This response is a draft and requires officer approval before being
-            provided as an official response.
-            """;
+        responseText = EnsureApprovalNotice(responseText);
 
         var draft = new DraftResponse(
-            response,
+            responseText,
             citations,
             RequiresOfficerApproval: true);
 
@@ -141,6 +136,7 @@ public sealed class ResponseDrafter : IResponseDrafter
 
     private static string BuildFallbackResponse(
         CitizenQuery query,
+        EligibilityResult eligibility,
         ProcedureResult procedure,
         IReadOnlyCollection<EvidenceChunk> evidence)
     {
@@ -148,109 +144,210 @@ public sealed class ResponseDrafter : IResponseDrafter
             " ",
             evidence.Select(x => x.Content));
 
-        var documentLines = ExtractRequiredDocuments(combinedEvidence);
+        var questionType = DetectQuestionType(query.Situation);
+
+        return questionType switch
+        {
+            "documents" => BuildDocumentsResponse(query, combinedEvidence),
+            "fees" => BuildFeeResponse(combinedEvidence),
+            "timeline" => BuildTimelineResponse(combinedEvidence),
+            "procedure" => BuildProcedureResponse(procedure),
+            "eligibility" => BuildEligibilityResponse(eligibility),
+            _ => BuildGeneralResponse(combinedEvidence)
+        };
+    }
+
+    private static string BuildDocumentsResponse(
+        CitizenQuery query,
+        string content)
+    {
+        var documents = ExtractRequiredDocuments(content);
+
+        if (documents.Count == 0)
+        {
+            return "The available evidence does not specify the documents required for this request.";
+        }
+
+        var asksAboutIdentification =
+            ContainsAny(
+                query.Situation,
+                "identification",
+                "id document",
+                "id card",
+                "identity document",
+                "identification document");
+
+        if (asksAboutIdentification)
+        {
+            var hasIdentification = documents.Any(document =>
+                document.Contains(
+                    "identification",
+                    StringComparison.OrdinalIgnoreCase));
+
+            return hasIdentification
+                ? "Yes. The available evidence states that applicants must provide a valid identification document."
+                : "The available evidence does not establish that an identification document is required.";
+        }
+
+        var lines = new List<string>
+        {
+            "The available evidence lists these required documents:"
+        };
+
+        lines.AddRange(
+            documents.Select(document => $"- {document}"));
+
+        return string.Join(
+            Environment.NewLine,
+            lines);
+    }
+
+    private static string BuildFeeResponse(string content)
+    {
+        var fee = ExtractSentence(
+            content,
+            "The applicable service fee",
+            "Processing Timeline");
+
+        return !string.IsNullOrWhiteSpace(fee)
+            ? fee
+            : "The available evidence does not specify an exact service fee.";
+    }
+
+    private static string BuildTimelineResponse(string content)
+    {
+        var timeline = ExtractSentence(
+            content,
+            "The expected processing time",
+            "Important");
+
+        return !string.IsNullOrWhiteSpace(timeline)
+            ? timeline
+            : "The available evidence does not specify an exact processing time.";
+    }
+
+    private static string BuildProcedureResponse(
+        ProcedureResult procedure)
+    {
+        if (!procedure.IsSupported ||
+            procedure.Steps.Count == 0)
+        {
+            return "The available evidence is insufficient to provide the procedure steps.";
+        }
+
+        var lines = new List<string>
+        {
+            "The available procedure is:"
+        };
+
+        lines.AddRange(
+            procedure.Steps.Select(
+                (step, index) => $"{index + 1}. {step}"));
+
+        return string.Join(
+            Environment.NewLine,
+            lines);
+    }
+
+    private static string BuildEligibilityResponse(
+        EligibilityResult eligibility)
+    {
+        if (string.IsNullOrWhiteSpace(
+                eligibility.Explanation))
+        {
+            return "The available evidence is insufficient to determine eligibility.";
+        }
+
+        return eligibility.Explanation;
+    }
+
+    private static string BuildGeneralResponse(
+        string content)
+    {
+        var documents = ExtractRequiredDocuments(content);
 
         var fee = ExtractSentence(
-            combinedEvidence,
+            content,
             "The applicable service fee",
             "Processing Timeline");
 
         var timeline = ExtractSentence(
-            combinedEvidence,
+            content,
             "The expected processing time",
             "Important");
 
-        var responseLines = new List<string>
+        var lines = new List<string>
         {
-            $"Regarding your request: \"{query.Situation}\"",
-            "",
-            "Based on the available government-service evidence:"
+            "The available government-service evidence provides the following information:"
         };
 
-        if (documentLines.Count > 0)
+        if (documents.Count > 0)
         {
-            responseLines.Add("");
-            responseLines.Add("Required documents:");
+            lines.Add("Required documents:");
 
-            foreach (var document in documentLines)
-            {
-                responseLines.Add($"- {document}");
-            }
-
-            responseLines.Add("");
-            responseLines.Add(
-                "The required documents may vary depending on the requested " +
-                "service and the applicant's circumstances.");
+            lines.AddRange(
+                documents.Select(
+                    document => $"- {document}"));
         }
 
         if (!string.IsNullOrWhiteSpace(fee))
         {
-            responseLines.Add("");
-            responseLines.Add($"Fees: {fee}");
+            lines.Add($"Fees: {fee}");
         }
 
         if (!string.IsNullOrWhiteSpace(timeline))
         {
-            responseLines.Add("");
-            responseLines.Add($"Processing time: {timeline}");
+            lines.Add($"Processing time: {timeline}");
         }
 
-        if (documentLines.Count == 0 &&
-            string.IsNullOrWhiteSpace(fee) &&
-            string.IsNullOrWhiteSpace(timeline))
+        if (lines.Count == 1)
         {
-            responseLines.Add("");
-            responseLines.Add(
-                "The available evidence does not provide sufficient " +
-                "specific information to answer the request.");
+            lines.Add(
+                "The available evidence does not provide enough specific information to answer the request.");
         }
 
-        return string.Join(Environment.NewLine, responseLines);
+        return string.Join(
+            Environment.NewLine,
+            lines);
     }
 
-    private static List<string> ExtractRequiredDocuments(string content)
+    private static List<string> ExtractRequiredDocuments(
+        string content)
     {
         var documents = new List<string>();
 
         AddIfPresent(
             documents,
             content,
-            "Valid identification document",
+            "Valid identification document");
+
+        AddIfPresent(
+            documents,
+            content,
             "Completed service request form");
 
         AddIfPresent(
             documents,
             content,
-            "Completed service request form",
-            "Supporting documents");
-
-        AddIfPresent(
-            documents,
-            content,
-            "Supporting documents relevant to the requested service",
-            "Fees");
+            "Supporting documents relevant to the requested service");
 
         return documents
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
     private static void AddIfPresent(
         ICollection<string> results,
         string content,
-        string value,
-        string nextMarker)
+        string value)
     {
-        var start = content.IndexOf(
-            value,
-            StringComparison.OrdinalIgnoreCase);
-
-        if (start < 0)
+        if (content.Contains(
+                value,
+                StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            results.Add(value);
         }
-
-        results.Add(value);
     }
 
     private static string? ExtractSentence(
@@ -276,10 +373,110 @@ public sealed class ResponseDrafter : IResponseDrafter
             ? end - start
             : content.Length - start;
 
-        var result = content.Substring(start, length).Trim();
+        var result = content
+            .Substring(start, length)
+            .Trim();
 
         return string.IsNullOrWhiteSpace(result)
             ? null
             : result;
+    }
+
+    private static string DetectQuestionType(
+        string question)
+    {
+        if (ContainsAny(
+                question,
+                "document",
+                "documents",
+                "paper",
+                "papers",
+                "paperwork",
+                "identification",
+                "id document",
+                "form"))
+        {
+            return "documents";
+        }
+
+        if (ContainsAny(
+                question,
+                "fee",
+                "fees",
+                "cost",
+                "price",
+                "charge",
+                "pay",
+                "payment"))
+        {
+            return "fees";
+        }
+
+        if (ContainsAny(
+                question,
+                "how long",
+                "processing time",
+                "processing timeline",
+                "deadline",
+                "duration",
+                "how many days",
+                "take"))
+        {
+            return "timeline";
+        }
+
+        if (ContainsAny(
+                question,
+                "step",
+                "steps",
+                "procedure",
+                "process",
+                "apply",
+                "application",
+                "submit",
+                "how do i"))
+        {
+            return "procedure";
+        }
+
+        if (ContainsAny(
+                question,
+                "eligible",
+                "eligibility",
+                "who can apply",
+                "can i apply",
+                "qualify",
+                "qualification"))
+        {
+            return "eligibility";
+        }
+
+        return "general";
+    }
+
+    private static bool ContainsAny(
+        string text,
+        params string[] values)
+    {
+        return values.Any(value =>
+            text.Contains(
+                value,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string EnsureApprovalNotice(
+        string response)
+    {
+        const string approvalNotice =
+            "This response is a draft and requires officer approval before being provided as an official response.";
+
+        if (response.Contains(
+                "requires officer approval",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return response.Trim();
+        }
+
+        return $"{response.Trim()}\n\n{approvalNotice}";
     }
 }
