@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Domain Copilot</title>
+    <link rel="stylesheet" href="/css/site.css" />
+</head>
+
+<body>
+    <!-- Login -->
+    <section id="loginView" class="page-center">
+        <div class="login-card">
+            <div class="brand">
+                <div class="brand-icon">DC</div>
+                <div>
+                    <h1>Domain Copilot</h1>
+                    <p>Government Agentic RAG Platform</p>
+                </div>
+            </div>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        placeholder="Enter username"
+                        required
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Enter password"
+                        required
+                    />
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full">
+                    Sign in
+                </button>
+
+                <div id="loginMessage" class="message hidden"></div>
+
+                <div class="demo-credentials">
+                    <strong>Demo accounts</strong>
+                    <p>Citizen: <code>citizen / citizen123</code></p>
+                    <p>Officer: <code>officer / officer123</code></p>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- Application -->
+    <section id="appView" class="app-shell hidden">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">DC</div>
+                <div>
+                    <strong>Domain Copilot</strong>
+                    <span>Government AI</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-section="dashboardSection">
+                    <span>¦</span>
+                    Dashboard
+                </button>
+
+                <button class="nav-item" data-section="askSection">
+                    <span>?</span>
+                    Ask Service
+                </button>
+
+                <button class="nav-item" data-section="runsSection">
+                    <span>?</span>
+                    Run Details
+                </button>
+
+                <button class="nav-item" data-section="replaySection">
+                    <span>?</span>
+                    Replay
+                </button>
+
+                <button class="nav-item" data-section="toolsSection">
+                    <span>?</span>
+                    Tools
+                </button>
+
+                <button
+                    id="usageNav"
+                    class="nav-item officer-only"
+                    data-section="usageSection">
+                    <span>?</span>
+                    Usage
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="health-badge">
+                    <span class="status-dot"></span>
+                    <span id="healthText">Checking API...</span>
+                </div>
+
+                <button id="logoutBtn" class="btn btn-ghost btn-full">
+                    Sign out
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="main-content">
+
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">Agentic RAG Platform</p>
+                    <h2 id="pageTitle">Dashboard</h2>
+                </div>
+
+                <div class="user-area">
+                    <span id="userRoleBadge" class="role-badge">User</span>
+                    <span id="currentUser">Guest</span>
+                </div>
+            </header>
+
+            <div id="globalMessage" class="message hidden"></div>
+
+            <!-- Dashboard -->
+            <section id="dashboardSection" class="content-section active-section">
+
+                <div class="hero-card">
+                    <div>
+                        <p class="eyebrow">Government Services</p>
+                        <h1>Ask about a government service</h1>
+                        <p>
+                            Describe your situation and let the specialized agents
+                            identify eligibility, resolve procedures, and prepare
+                            an evidence-grounded draft.
+                        </p>
+
+                        <button id="startAskBtn" class="btn btn-primary">
+                            Start a request
+                        </button>
+                    </div>
+
+                    <div class="hero-visual">
+                        <div class="agent-node">Eligibility</div>
+                        <div class="agent-line"></div>
+                        <div class="agent-node">Procedure</div>
+                        <div class="agent-line"></div>
+                        <div class="agent-node">Draft</div>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Role</span>
+                        <strong id="dashboardRole">—</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">API Health</span>
+                        <strong id="dashboardHealth">Checking...</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">Latest Run</span>
+                        <strong id="dashboardRun">—</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">Mode</span>
+                        <strong>Human Approved</strong>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3>How it works</h3>
+                            <p>Evidence-first government service workflow</p>
+                        </div>
+                    </div>
+
+                    <div class="workflow-steps">
+                        <div class="workflow-step">
+                            <span class="step-number">1</span>
+                            <div>
+                                <strong>Identify</strong>
+                                <p>Find the relevant service and eligibility.</p>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step">
+                            <span class="step-number">2</span>
+                            <div>
+                                <strong>Resolve</strong>
+                                <p>Retrieve documents, fees and timelines.</p>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step">
+                            <span class="step-number">3</span>
+                            <div>
+                                <strong>Draft</strong>
+                                <p>Create a grounded response with citations.</p>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step">
+                            <span class="step-number">4</span>
+                            <div>
+                                <strong>Approve</strong>
+                                <p>An officer reviews before final action.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Ask -->
+            <section id="askSection" class="content-section">
+
+                <div class="section-heading">
+                    <p class="eyebrow">Government Workflow</p>
+                    <h2>Ask about a service</h2>
+                    <p>
+                        Describe the citizen's situation using natural language.
+                    </p>
+                </div>
+
+                <div class="panel">
+                    <form id="askForm">
+
+                        <div class="form-group">
+                            <label for="situation">Citizen situation</label>
+
+                            <textarea
+                                id="situation"
+                                rows="7"
+                                placeholder="Example: What documents are required for the government service?"
+                                required></textarea>
+                        </div>
+
+                        <div class="action-row">
+                            <button
+                                type="submit"
+                                id="executeWorkflowBtn"
+                                class="btn btn-primary">
+                                Execute workflow
+                            </button>
+
+                            <button
+                                type="button"
+                                id="clearAskBtn"
+                                class="btn btn-secondary">
+                                Clear
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="workflowLoading" class="panel hidden">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+
+                        <div>
+                            <strong>Agents are working...</strong>
+                            <p id="workflowLoadingText">
+                                Starting government workflow
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="workflowResult" class="hidden">
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Workflow Result</p>
+                                <h3>Response draft</h3>
+                            </div>
+
+                            <span id="workflowStatus" class="status-badge">
+                                —
+                            </span>
+                        </div>
+
+                        <div id="draftResponse" class="draft-response"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Evidence</p>
+                                <h3>Supporting citations</h3>
+                            </div>
+                        </div>
+
+                        <div id="citationsContainer" class="citations-list">
+                            <p class="muted">No citations available.</p>
+                        </div>
+                    </div>
+
+                    <div
+                        id="approvalPanel"
+                        class="panel officer-only hidden">
+
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Officer Review</p>
+                                <h3>Approval required</h3>
+                            </div>
+
+                            <span class="approval-badge">
+                                Pending review
+                            </span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="editedDraft">
+                                Draft response
+                            </label>
+
+                            <textarea
+                                id="editedDraft"
+                                rows="10"></textarea>
+                        </div>
+
+                        <div class="action-row">
+                            <button
+                                id="approveBtn"
+                                class="btn btn-success">
+                                Approve
+                            </button>
+
+                            <button
+                                id="rejectBtn"
+                                class="btn btn-danger">
+                                Reject
+                            </button>
+                        </div>
+
+                        <div
+                            id="rejectReasonContainer"
+                            class="form-group hidden">
+
+                            <label for="rejectReason">
+                                Rejection reason
+                            </label>
+
+                            <textarea
+                                id="rejectReason"
+                                rows="4"
+                                placeholder="Explain why this draft is rejected..."></textarea>
+
+                            <button
+                                id="confirmRejectBtn"
+                                class="btn btn-danger">
+                                Confirm rejection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Runs -->
+            <section id="runsSection" class="content-section">
+
+                <div class="section-heading">
+                    <p class="eyebrow">Auditability</p>
+                    <h2>Run details</h2>
+                    <p>Inspect a persisted workflow run by its ID.</p>
+                </div>
+
+                <div class="panel">
+                    <form id="runForm">
+                        <div class="form-row">
+                            <div class="form-group grow">
+                                <label for="runIdInput">Run ID</label>
+                                <input
+                                    id="runIdInput"
+                                    type="text"
+                                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                    required />
+                            </div>
+
+                            <div class="form-group form-action">
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary">
+                                    Load run
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="runDetailsPanel" class="panel hidden">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Persisted Run</p>
+                            <h3 id="runDetailsTitle">Run</h3>
+                        </div>
+
+                        <span id="runDetailsStatus" class="status-badge">—</span>
+                    </div>
+
+                    <pre id="runDetailsJson" class="json-view"></pre>
+                </div>
+            </section>
+
+            <!-- Replay -->
+            <section id="replaySection" class="content-section">
+
+                <div class="section-heading">
+                    <p class="eyebrow">Audit & Replay</p>
+                    <h2>Replay a run</h2>
+                    <p>
+                        Re-run a persisted workflow using its original run ID.
+                    </p>
+                </div>
+
+                <div class="panel">
+                    <form id="replayForm">
+
+                        <div class="form-row">
+                            <div class="form-group grow">
+                                <label for="replayRunId">
+                                    Original run ID
+                                </label>
+
+                                <input
+                                    id="replayRunId"
+                                    type="text"
+                                    placeholder="Enter original run ID"
+                                    required />
+                            </div>
+
+                            <div class="form-group form-action">
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary">
+                                    Replay run
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="replayResult" class="panel hidden">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Replay Result</p>
+                            <h3>New run created</h3>
+                        </div>
+                    </div>
+
+                    <div class="result-highlight">
+                        <span>Replay Run ID</span>
+                        <strong id="replayRunIdResult">—</strong>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tools -->
+            <section id="toolsSection" class="content-section">
+
+                <div class="section-heading">
+                    <p class="eyebrow">Agent Capabilities</p>
+                    <h2>Available tools</h2>
+                    <p>Server-registered tools available to the agents.</p>
+                </div>
+
+                <div id="toolsGrid" class="cards-grid">
+                    <div class="panel">
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <span>Loading tools...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Usage -->
+            <section
+                id="usageSection"
+                class="content-section officer-only">
+
+                <div class="section-heading">
+                    <p class="eyebrow">Observability</p>
+                    <h2>Usage</h2>
+                    <p>LLM usage information available to officers.</p>
+                </div>
+
+                <div id="usageGrid" class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Requests</span>
+                        <strong id="usageRequests">—</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">Prompt Tokens</span>
+                        <strong id="usagePromptTokens">—</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">Completion Tokens</span>
+                        <strong id="usageCompletionTokens">—</strong>
+                    </div>
+
+                    <div class="stat-card">
+                        <span class="stat-label">Total Tokens</span>
+                        <strong id="usageTotalTokens">—</strong>
+                    </div>
+                </div>
+
+                <div id="usageDetails" class="panel hidden">
+                    <pre id="usageJson" class="json-view"></pre>
+                </div>
+            </section>
+
+        </main>
+    </section>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
