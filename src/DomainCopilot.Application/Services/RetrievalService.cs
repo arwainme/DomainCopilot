@@ -1,10 +1,15 @@
-﻿using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.Agents;
 using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Application.Services;
 
 public sealed class RetrievalService : IRetrievalService
 {
+    private const double StrongSemanticThreshold = 0.50;
+    private const double MinimumSemanticThreshold = 0.35;
+    private const int MaximumLexicalScore = 8;
+
     private readonly IReadOnlyCollection<EvidenceChunk> _chunks;
     private readonly ILlmProvider _llmProvider;
 
@@ -31,6 +36,7 @@ public sealed class RetrievalService : IRetrievalService
             "can",
             "do",
             "does",
+            "did",
             "i",
             "my",
             "me",
@@ -38,7 +44,141 @@ public sealed class RetrievalService : IRetrievalService
             "that",
             "with",
             "from",
-            "government"
+            "government",
+            "service",
+            "services",
+            "request",
+            "requested"
+        };
+
+    private static readonly Dictionary<string, string[]> QuerySynonyms =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cost"] =
+            [
+                "fee",
+                "fees",
+                "charge",
+                "charges",
+                "payment",
+                "price"
+            ],
+
+            ["price"] =
+            [
+                "fee",
+                "fees",
+                "cost",
+                "charge",
+                "payment"
+            ],
+
+            ["pay"] =
+            [
+                "fee",
+                "fees",
+                "payment",
+                "charge",
+                "cost"
+            ],
+
+            ["payment"] =
+            [
+                "fee",
+                "fees",
+                "payment",
+                "charge",
+                "cost"
+            ],
+
+            ["long"] =
+            [
+                "processing",
+                "timeline",
+                "time",
+                "duration",
+                "deadline"
+            ],
+
+            ["duration"] =
+            [
+                "processing",
+                "timeline",
+                "time",
+                "deadline"
+            ],
+
+            ["days"] =
+            [
+                "processing",
+                "timeline",
+                "time",
+                "duration"
+            ],
+
+            ["steps"] =
+            [
+                "procedure",
+                "process",
+                "application",
+                "apply",
+                "submit"
+            ],
+
+            ["apply"] =
+            [
+                "application",
+                "procedure",
+                "process",
+                "submit"
+            ],
+
+            ["application"] =
+            [
+                "apply",
+                "procedure",
+                "process",
+                "submit"
+            ],
+
+            ["paperwork"] =
+            [
+                "documents",
+                "document",
+                "papers",
+                "form"
+            ],
+
+            ["papers"] =
+            [
+                "documents",
+                "document",
+                "paperwork",
+                "form"
+            ],
+
+            ["id"] =
+            [
+                "identification",
+                "identity",
+                "document"
+            ],
+
+            ["eligible"] =
+            [
+                "eligibility",
+                "qualify",
+                "qualification",
+                "requirements"
+            ],
+
+            ["qualify"] =
+            [
+                "eligible",
+                "eligibility",
+                "qualification",
+                "requirements"
+            ]
         };
 
     public RetrievalService(ILlmProvider llmProvider)
@@ -70,44 +210,21 @@ public sealed class RetrievalService : IRetrievalService
             return Array.Empty<EvidenceChunk>();
         }
 
-        var terms = query
-            .Split(
-                [' ', ',', '.', '?', '!', ':', ';', '-', '/', '(', ')'],
-                StringSplitOptions.RemoveEmptyEntries |
-                StringSplitOptions.TrimEntries)
-            .Select(x => x.ToLowerInvariant())
-            .Where(x => x.Length >= 3)
-            .Where(x => !StopWords.Contains(x))
-            .ToHashSet();
+        var terms = BuildQueryTerms(query);
 
         if (terms.Count == 0)
         {
             return Array.Empty<EvidenceChunk>();
         }
 
-        var lexicalScores = _chunks
-            .Select(chunk => new
-            {
-                Chunk = chunk,
-                Score = terms.Count(term =>
-                    chunk.Content.Contains(
-                        term,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    chunk.DocumentTitle.Contains(
-                        term,
-                        StringComparison.OrdinalIgnoreCase))
-            })
-            .ToDictionary(
-                x => x.Chunk.ChunkId,
-                x => x.Score);
-
         IReadOnlyList<float>? queryEmbedding = null;
 
         try
         {
-            queryEmbedding = await _llmProvider.GenerateEmbeddingAsync(
-                query,
-                cancellationToken);
+            queryEmbedding =
+                await _llmProvider.GenerateEmbeddingAsync(
+                    query,
+                    cancellationToken);
         }
         catch (Exception ex)
         {
@@ -122,11 +239,9 @@ public sealed class RetrievalService : IRetrievalService
             cancellationToken.ThrowIfCancellationRequested();
 
             var lexicalScore =
-                lexicalScores.TryGetValue(
-                    chunk.ChunkId,
-                    out var value)
-                    ? value
-                    : 0;
+                CalculateLexicalScore(
+                    terms,
+                    chunk);
 
             double semanticScore = 0;
 
@@ -140,9 +255,10 @@ public sealed class RetrievalService : IRetrievalService
                             chunk.Content,
                             cancellationToken);
 
-                    semanticScore = CosineSimilarity(
-                        queryEmbedding,
-                        chunkEmbedding);
+                    semanticScore =
+                        CosineSimilarity(
+                            queryEmbedding,
+                            chunkEmbedding);
                 }
                 catch (Exception ex)
                 {
@@ -151,41 +267,132 @@ public sealed class RetrievalService : IRetrievalService
                 }
             }
 
-            /*
-             * Relevance gate:
-             *
-             * A chunk must either:
-             * 1. Match at least two meaningful query terms, or
-             * 2. Have a strong semantic similarity score.
-             *
-             * This prevents generic words such as "procedure" or
-             * "government" from being enough to produce evidence.
-             */
-            var hasStrongLexicalMatch = lexicalScore >= 2;
-            var hasStrongSemanticMatch = semanticScore >= 0.65;
+            var hasLexicalEvidence =
+                lexicalScore >= 1;
 
-            if (!hasStrongLexicalMatch &&
-                !hasStrongSemanticMatch)
+            var hasStrongSemanticEvidence =
+                semanticScore >= StrongSemanticThreshold;
+
+            var hasMinimumSemanticEvidence =
+                semanticScore >= MinimumSemanticThreshold;
+
+            if (!hasLexicalEvidence &&
+                !hasStrongSemanticEvidence &&
+                !hasMinimumSemanticEvidence)
             {
                 continue;
             }
 
             var normalizedLexical =
-                Math.Min(lexicalScore / 5.0, 1.0);
+                Math.Min(
+                    lexicalScore /
+                    MaximumLexicalScore,
+                    1.0);
 
             var finalScore =
-                (normalizedLexical * 0.4) +
-                (semanticScore * 0.6);
+                queryEmbedding is not null &&
+                queryEmbedding.Count > 0
+                    ? (normalizedLexical * 0.45) +
+                      (semanticScore * 0.55)
+                    : normalizedLexical;
 
-            ranked.Add((chunk, finalScore));
+            ranked.Add(
+                (chunk, finalScore));
         }
 
-        return ranked
+        var results = ranked
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Chunk.ChunkId)
             .Take(Math.Max(1, topK))
             .Select(x => x.Chunk)
             .ToList();
+
+        Console.WriteLine(
+            $"[Retrieval] Query='{query}' Terms={string.Join(",", terms)} Results={results.Count}");
+
+        return results;
+    }
+
+    private static HashSet<string> BuildQueryTerms(
+        string query)
+    {
+        var terms = query
+            .Split(
+                [
+                    ' ',
+                    ',',
+                    '.',
+                    '?',
+                    '!',
+                    ':',
+                    ';',
+                    '-',
+                    '/',
+                    '(',
+                    ')'
+                ],
+                StringSplitOptions.RemoveEmptyEntries |
+                StringSplitOptions.TrimEntries)
+            .Select(x => x.ToLowerInvariant())
+            .Where(x => x.Length >= 2)
+            .Where(x => !StopWords.Contains(x))
+            .ToHashSet(
+                StringComparer.OrdinalIgnoreCase);
+
+        var expandedTerms =
+            new HashSet<string>(
+                terms,
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var term in terms)
+        {
+            if (!QuerySynonyms.TryGetValue(
+                    term,
+                    out var synonyms))
+            {
+                continue;
+            }
+
+            foreach (var synonym in synonyms)
+            {
+                expandedTerms.Add(
+                    synonym.ToLowerInvariant());
+            }
+        }
+
+        return expandedTerms;
+    }
+
+    private static int CalculateLexicalScore(
+        IReadOnlySet<string> terms,
+        EvidenceChunk chunk)
+    {
+        var content =
+            chunk.Content ?? string.Empty;
+
+        var title =
+            chunk.DocumentTitle ?? string.Empty;
+
+        var score = 0;
+
+        foreach (var term in terms)
+        {
+            if (content.Contains(
+                    term,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                score++;
+            }
+
+            if (title.Contains(
+                    term,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                score++;
+            }
+        }
+
+        return score;
     }
 
     private async Task<IReadOnlyList<float>> GetEmbeddingAsync(
@@ -218,7 +425,8 @@ public sealed class RetrievalService : IRetrievalService
             return 0;
         }
 
-        var length = Math.Min(a.Count, b.Count);
+        var length =
+            Math.Min(a.Count, b.Count);
 
         double dot = 0;
         double magnitudeA = 0;
@@ -231,7 +439,8 @@ public sealed class RetrievalService : IRetrievalService
             magnitudeB += b[i] * b[i];
         }
 
-        if (magnitudeA == 0 || magnitudeB == 0)
+        if (magnitudeA == 0 ||
+            magnitudeB == 0)
         {
             return 0;
         }
@@ -265,12 +474,14 @@ public sealed class RetrievalService : IRetrievalService
 
         foreach (var filePath in files)
         {
-            var ingestionService = new DocumentIngestionService();
+            var ingestionService =
+                new DocumentIngestionService();
 
-            var fileChunks = ingestionService
-                .IngestAsync(filePath)
-                .GetAwaiter()
-                .GetResult();
+            var fileChunks =
+                ingestionService
+                    .IngestAsync(filePath)
+                    .GetAwaiter()
+                    .GetResult();
 
             chunks.AddRange(fileChunks);
         }
@@ -280,17 +491,20 @@ public sealed class RetrievalService : IRetrievalService
 
     private static string FindProjectRoot()
     {
-        var directory = new DirectoryInfo(
-            AppContext.BaseDirectory);
+        var directory =
+            new DirectoryInfo(
+                AppContext.BaseDirectory);
 
         while (directory is not null)
         {
-            var documentsDirectory = Path.Combine(
-                directory.FullName,
-                "data",
-                "documents");
+            var documentsDirectory =
+                Path.Combine(
+                    directory.FullName,
+                    "data",
+                    "documents");
 
-            if (Directory.Exists(documentsDirectory))
+            if (Directory.Exists(
+                    documentsDirectory))
             {
                 return directory.FullName;
             }
