@@ -90,6 +90,8 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // HTTP pipeline
 if (app.Environment.IsDevelopment())
