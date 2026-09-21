@@ -1,5 +1,7 @@
-﻿using DomainCopilot.Application.Abstractions;
+﻿using System.Text.Json;
+using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Agents;
+using DomainCopilot.Application.Configuration;
 using DomainCopilot.Application.DTOs;
 using DomainCopilot.Application.Tools;
 
@@ -14,6 +16,7 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
     private readonly IApprovalService _approvalService;
     private readonly IAuditStore _auditStore;
     private readonly ToolRegistry _toolRegistry;
+    private readonly WorkflowOptions _options;
 
     public GovernmentWorkflow(
         IRetrievalService retrievalService,
@@ -22,7 +25,8 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
         IResponseDrafter responseDrafter,
         IApprovalService approvalService,
         IAuditStore auditStore,
-        ToolRegistry toolRegistry)
+        ToolRegistry toolRegistry,
+        WorkflowOptions options)
     {
         _retrievalService = retrievalService;
         _eligibilityIdentifier = eligibilityIdentifier;
@@ -31,6 +35,7 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
         _approvalService = approvalService;
         _auditStore = auditStore;
         _toolRegistry = toolRegistry;
+        _options = options;
     }
 
     public async Task<GovernmentWorkflowResult> ExecuteAsync(
@@ -42,19 +47,38 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
 
         var currentRunId = runId ?? Guid.NewGuid();
 
+        using var timeoutCts =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+
+        timeoutCts.CancelAfter(
+            TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+        var workflowCancellationToken =
+            timeoutCts.Token;
+
+        var iteration = 0;
+
         await _auditStore.StartRunAsync(
             currentRunId,
             query,
-            cancellationToken);
+            workflowCancellationToken);
 
         try
         {
-            // 1. Retrieve relevant evidence through the orchestrator tool registry.
-            var searchToolResult = await ExecuteToolAsync(
+            iteration = await RecordIterationAsync(
                 currentRunId,
-                "search_evidence",
-                query.Situation,
-                cancellationToken);
+                iteration,
+                "Retrieval",
+                workflowCancellationToken);
+
+            var searchToolResult = await ExecuteWithRetryAsync(
+                () => ExecuteToolAsync(
+                    currentRunId,
+                    "search_evidence",
+                    query.Situation,
+                    workflowCancellationToken),
+                workflowCancellationToken);
 
             var evidence =
                 searchToolResult.Data as IReadOnlyList<EvidenceChunk>
@@ -66,14 +90,20 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                 "Search",
                 query.Situation,
                 $"Retrieved {evidence.Count} evidence chunks.",
-                cancellationToken);
+                workflowCancellationToken);
 
-            // 2. Eligibility agent
-            var eligibilityResult =
-                await _eligibilityIdentifier.ExecuteAsync(
+            iteration = await RecordIterationAsync(
+                currentRunId,
+                iteration,
+                "EligibilityIdentifier",
+                workflowCancellationToken);
+
+            var eligibilityResult = await ExecuteWithRetryAsync(
+                () => _eligibilityIdentifier.ExecuteAsync(
                     query,
                     evidence,
-                    cancellationToken);
+                    workflowCancellationToken),
+                workflowCancellationToken);
 
             if (!eligibilityResult.Success ||
                 eligibilityResult.Data is null)
@@ -88,12 +118,12 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                     "Escalate",
                     query.Situation,
                     reason,
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 await _auditStore.SetStatusAsync(
                     currentRunId,
                     "Escalated",
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 return new GovernmentWorkflowResult(
                     currentRunId,
@@ -117,15 +147,21 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                 "IdentifyEligibility",
                 query.Situation,
                 eligibility.Explanation,
-                cancellationToken);
+                workflowCancellationToken);
 
-            // 3. Procedure agent
-            var procedureResult =
-                await _procedureResolver.ExecuteAsync(
+            iteration = await RecordIterationAsync(
+                currentRunId,
+                iteration,
+                "ProcedureResolver",
+                workflowCancellationToken);
+
+            var procedureResult = await ExecuteWithRetryAsync(
+                () => _procedureResolver.ExecuteAsync(
                     query,
                     eligibility,
                     evidence,
-                    cancellationToken);
+                    workflowCancellationToken),
+                workflowCancellationToken);
 
             if (!procedureResult.Success ||
                 procedureResult.Data is null)
@@ -140,12 +176,12 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                     "Escalate",
                     eligibility.Explanation,
                     reason,
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 await _auditStore.SetStatusAsync(
                     currentRunId,
                     "Escalated",
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 return new GovernmentWorkflowResult(
                     currentRunId,
@@ -168,16 +204,22 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                 string.Join(
                     Environment.NewLine,
                     procedure.Steps),
-                cancellationToken);
+                workflowCancellationToken);
 
-            // 4. Response drafting agent
-            var draftResult =
-                await _responseDrafter.ExecuteAsync(
+            iteration = await RecordIterationAsync(
+                currentRunId,
+                iteration,
+                "ResponseDrafter",
+                workflowCancellationToken);
+
+            var draftResult = await ExecuteWithRetryAsync(
+                () => _responseDrafter.ExecuteAsync(
                     query,
                     eligibility,
                     procedure,
                     evidence,
-                    cancellationToken);
+                    workflowCancellationToken),
+                workflowCancellationToken);
 
             if (!draftResult.Success ||
                 draftResult.Data is null)
@@ -194,12 +236,12 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                         Environment.NewLine,
                         procedure.Steps),
                     reason,
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 await _auditStore.SetStatusAsync(
                     currentRunId,
                     "Escalated",
-                    cancellationToken);
+                    workflowCancellationToken);
 
                 return new GovernmentWorkflowResult(
                     currentRunId,
@@ -219,36 +261,63 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                     Environment.NewLine,
                     procedure.Steps),
                 draft.ResponseText,
-                cancellationToken);
+                workflowCancellationToken);
 
-            // 5. Human approval
-            var approvalResult =
-                await _approvalService.RequestApprovalAsync(
+            iteration = await RecordIterationAsync(
+                currentRunId,
+                iteration,
+                "Approval",
+                workflowCancellationToken);
+
+            var approvalInput = JsonSerializer.Serialize(new
+            {
+                RunId = currentRunId,
+                Draft = draft
+            });
+
+            var approvalToolResult = await ExecuteWithRetryAsync(
+                () => ExecuteToolAsync(
                     currentRunId,
+                    "submit_for_approval",
+                    approvalInput,
+                    workflowCancellationToken),
+                workflowCancellationToken);
+
+            if (!approvalToolResult.Success)
+            {
+                await _auditStore.RecordStepAsync(
+                    currentRunId,
+                    "Approval",
+                    "ApprovalGuardBlocked",
+                    draft.ResponseText,
+                    approvalToolResult.Output,
+                    workflowCancellationToken);
+
+                await _auditStore.SetStatusAsync(
+                    currentRunId,
+                    "Escalated",
+                    workflowCancellationToken);
+
+                return new GovernmentWorkflowResult(
+                    currentRunId,
+                    eligibility,
+                    procedure,
                     draft,
-                    cancellationToken);
+                    RequiresOfficerApproval: true);
+            }
 
             await _auditStore.RecordStepAsync(
                 currentRunId,
                 "Approval",
-                "RequestApproval",
+                "SubmitForApproval",
                 draft.ResponseText,
-                approvalResult.Status,
-                cancellationToken);
+                approvalToolResult.Output,
+                workflowCancellationToken);
 
-            if (approvalResult.Status == "Pending")
-            {
-                await _auditStore.SetStatusAsync(
-                    currentRunId,
-                    "WaitingForApproval",
-                    cancellationToken);
-            }
-            else
-            {
-                await _auditStore.CompleteRunAsync(
-                    currentRunId,
-                    cancellationToken);
-            }
+            await _auditStore.SetStatusAsync(
+                currentRunId,
+                "WaitingForApproval",
+                workflowCancellationToken);
 
             return new GovernmentWorkflowResult(
                 currentRunId,
@@ -257,15 +326,112 @@ public sealed class GovernmentWorkflow : IGovernmentWorkflow
                 draft,
                 draft.RequiresOfficerApproval);
         }
+        catch (OperationCanceledException) when (
+            workflowCancellationToken.IsCancellationRequested &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            await _auditStore.RecordStepAsync(
+                currentRunId,
+                "Orchestrator",
+                "Timeout",
+                query.Situation,
+                $"Workflow exceeded the configured timeout of {_options.TimeoutSeconds} seconds.",
+                CancellationToken.None);
+
+            await _auditStore.SetStatusAsync(
+                currentRunId,
+                "TimedOut",
+                CancellationToken.None);
+
+            throw;
+        }
         catch (Exception ex)
         {
             await _auditStore.FailRunAsync(
                 currentRunId,
                 ex.Message,
-                cancellationToken);
+                CancellationToken.None);
 
             throw;
         }
+    }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(
+        Func<Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastException = null;
+
+        for (var attempt = 0;
+             attempt <= _options.MaxRetries;
+             attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                return await operation();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+
+                if (attempt >= _options.MaxRetries)
+                {
+                    break;
+                }
+
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(250 * (attempt + 1)),
+                    cancellationToken);
+            }
+        }
+
+        throw lastException ??
+              new InvalidOperationException(
+                  "Workflow operation failed after all retry attempts.");
+    }
+
+    private async Task<int> RecordIterationAsync(
+        Guid runId,
+        int currentIteration,
+        string stage,
+        CancellationToken cancellationToken)
+    {
+        var nextIteration = currentIteration + 1;
+
+        if (nextIteration > _options.MaxIterations)
+        {
+            await _auditStore.RecordStepAsync(
+                runId,
+                "Orchestrator",
+                "MaxIterationsExceeded",
+                stage,
+                $"Maximum workflow iterations ({_options.MaxIterations}) exceeded.",
+                CancellationToken.None);
+
+            await _auditStore.SetStatusAsync(
+                runId,
+                "Escalated",
+                CancellationToken.None);
+
+            throw new InvalidOperationException(
+                $"Maximum workflow iterations ({_options.MaxIterations}) exceeded.");
+        }
+
+        await _auditStore.RecordStepAsync(
+            runId,
+            "Orchestrator",
+            $"Iteration:{nextIteration}",
+            stage,
+            $"Workflow iteration {nextIteration} of {_options.MaxIterations}.",
+            cancellationToken);
+
+        return nextIteration;
     }
 
     private async Task<ToolResult> ExecuteToolAsync(

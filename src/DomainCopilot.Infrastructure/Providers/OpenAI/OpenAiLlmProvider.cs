@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using Microsoft.Extensions.Options;
+using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Infrastructure.Providers.OpenAI;
 
@@ -10,13 +11,16 @@ public sealed class OpenAiLlmProvider : ILlmProvider
 {
     private readonly HttpClient _httpClient;
     private readonly LlmProviderOptions _options;
+    private readonly IUsageTracker _usageTracker;
 
     public OpenAiLlmProvider(
         HttpClient httpClient,
-        IOptions<LlmProviderOptions> options)
+        IOptions<LlmProviderOptions> options,
+        IUsageTracker usageTracker)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _usageTracker = usageTracker;
 
         _httpClient.BaseAddress = new Uri(
             _options.OpenAI.BaseUrl);
@@ -40,12 +44,12 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             model = _options.OpenAI.Model,
             messages = new[]
             {
-                new
-                {
-                    role = "user",
-                    content = prompt
-                }
+            new
+            {
+                role = "user",
+                content = prompt
             }
+        }
         };
 
         using var response = await _httpClient.PostAsJsonAsync(
@@ -58,6 +62,27 @@ public sealed class OpenAiLlmProvider : ILlmProvider
         var result =
             await response.Content.ReadFromJsonAsync<JsonElement>(
                 cancellationToken);
+
+        var usage = result.GetProperty("usage");
+
+        var inputTokens =
+            usage.GetProperty("prompt_tokens").GetInt32();
+
+        var outputTokens =
+            usage.GetProperty("completion_tokens").GetInt32();
+
+        var estimatedCost =
+            CalculateEstimatedCost(
+                inputTokens,
+                outputTokens);
+
+        _usageTracker.Record(
+            new LlmUsage(
+                Provider: "OpenAI",
+                Model: _options.OpenAI.Model,
+                InputTokens: inputTokens,
+                OutputTokens: outputTokens,
+                EstimatedCostUsd: estimatedCost));
 
         return result
             .GetProperty("choices")[0]
@@ -179,5 +204,22 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             .EnumerateArray()
             .Select(x => x.GetSingle())
             .ToArray();
+    }
+
+
+
+    private decimal CalculateEstimatedCost(
+    int inputTokens,
+    int outputTokens)
+    {
+        const decimal inputPricePerMillion = 0.15m;
+        const decimal outputPricePerMillion = 0.60m;
+
+        return
+            (inputTokens / 1_000_000m) *
+            inputPricePerMillion
+            +
+            (outputTokens / 1_000_000m) *
+            outputPricePerMillion;
     }
 }
