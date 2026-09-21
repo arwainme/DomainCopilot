@@ -1,8 +1,9 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.DTOs;
 using DomainCopilot.Infrastructure.Providers;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace DomainCopilot.Infrastructure.Providers.Local;
 
@@ -10,21 +11,24 @@ public sealed class LocalLlmProvider : ILlmProvider
 {
     private readonly HttpClient _httpClient;
     private readonly LlmProviderOptions _options;
+    private readonly IUsageTracker _usageTracker;
 
     public LocalLlmProvider(
         HttpClient httpClient,
-        IOptions<LlmProviderOptions> options)
+        IOptions<LlmProviderOptions> options,
+        IUsageTracker usageTracker)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _usageTracker = usageTracker;
 
         _httpClient.BaseAddress = new Uri(
             _options.Local.BaseUrl.TrimEnd('/') + "/");
     }
 
     public async Task<string> CompleteAsync(
-        string prompt,
-        CancellationToken cancellationToken = default)
+       string prompt,
+       CancellationToken cancellationToken = default)
     {
         var request = new
         {
@@ -43,12 +47,25 @@ public sealed class LocalLlmProvider : ILlmProvider
         var result = await response.Content.ReadFromJsonAsync<JsonElement>(
             cancellationToken);
 
-        return result
-            .GetProperty("response")
-            .GetString()
+        var output =
+            result
+                .GetProperty("response")
+                .GetString()
             ?? string.Empty;
-    }
 
+        var inputTokens = EstimateTokens(prompt);
+        var outputTokens = EstimateTokens(output);
+
+        _usageTracker.Record(
+            new LlmUsage(
+                Provider: "Local",
+                Model: _options.Local.Model,
+                InputTokens: inputTokens,
+                OutputTokens: outputTokens,
+                EstimatedCostUsd: 0m));
+
+        return output;
+    }
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
@@ -146,5 +163,15 @@ public sealed class LocalLlmProvider : ILlmProvider
             .EnumerateArray()
             .Select(x => x.GetSingle())
             .ToArray();
+    }
+
+    private static int EstimateTokens(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return 0;
+
+        return Math.Max(
+            1,
+            (int)Math.Ceiling(text.Length / 4.0));
     }
 }

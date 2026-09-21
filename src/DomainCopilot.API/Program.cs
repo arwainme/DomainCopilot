@@ -1,7 +1,10 @@
 using DomainCopilot.API.Authentication;
+using DomainCopilot.API.Middleware;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Agents;
+using DomainCopilot.Application.Configuration;
 using DomainCopilot.Application.Services;
+using DomainCopilot.Application.Tools;
 using DomainCopilot.Application.Workflows;
 using DomainCopilot.Infrastructure.Audit;
 using DomainCopilot.Infrastructure.Providers;
@@ -10,8 +13,7 @@ using DomainCopilot.Infrastructure.Providers.OpenAI;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using DomainCopilot.Application.Tools;
-using DomainCopilot.Application.Configuration;
+using DomainCopilot.Infrastructure.Usage;
 var builder = WebApplication.CreateBuilder(args);
 
 const string jwtSecret =
@@ -59,6 +61,7 @@ builder.Services.AddScoped<ITool>(sp =>
 
 builder.Services.AddScoped<ToolRegistry>();
 // LLM providers
+builder.Services.AddSingleton<IUsageTracker, UsageTracker>();
 builder.Services.AddControllers();
 builder.Services.AddHttpClient<OpenAiLlmProvider>();
 builder.Services.AddHttpClient<LocalLlmProvider>();
@@ -86,6 +89,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 // HTTP pipeline
 if (app.Environment.IsDevelopment())
