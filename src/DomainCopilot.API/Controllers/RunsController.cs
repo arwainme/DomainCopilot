@@ -1,4 +1,4 @@
-﻿using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Workflows;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -65,4 +65,5 @@ public sealed class RunsController : ControllerBase
         });
     }
 }
+
 

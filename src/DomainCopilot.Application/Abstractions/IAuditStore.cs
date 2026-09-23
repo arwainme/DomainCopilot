@@ -1,4 +1,4 @@
-﻿using DomainCopilot.Application.DTOs;
+using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Application.Abstractions;
 

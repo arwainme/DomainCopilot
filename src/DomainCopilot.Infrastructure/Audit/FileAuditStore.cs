@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
 
