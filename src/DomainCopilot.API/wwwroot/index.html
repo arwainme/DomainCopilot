@@ -22,24 +22,20 @@
             <form id="loginForm">
                 <div class="form-group">
                     <label for="username">Username</label>
-                    <input
-                        id="username"
-                        name="username"
-                        type="text"
-                        placeholder="Enter username"
-                        required
-                    />
+                    <input id="username"
+                           name="username"
+                           type="text"
+                           placeholder="Enter username"
+                           required />
                 </div>
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        placeholder="Enter password"
-                        required
-                    />
+                    <input id="password"
+                           name="password"
+                           type="password"
+                           placeholder="Enter password"
+                           required />
                 </div>
 
                 <button type="submit" class="btn btn-primary btn-full">
@@ -72,35 +68,39 @@
 
             <nav class="sidebar-nav">
                 <button class="nav-item active" data-section="dashboardSection">
-                    <span>¦</span>
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></svg>
+                    </span>
                     Dashboard
                 </button>
 
                 <button class="nav-item" data-section="askSection">
-                    <span>?</span>
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                    </span>
                     Ask Service
                 </button>
 
                 <button class="nav-item" data-section="runsSection">
-                    <span>?</span>
-                    Run Details
-                </button>
-
-                <button class="nav-item" data-section="replaySection">
-                    <span>?</span>
-                    Replay
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>
+                    </span>
+                    Runs
                 </button>
 
                 <button class="nav-item" data-section="toolsSection">
-                    <span>?</span>
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2z" /></svg>
+                    </span>
                     Tools
                 </button>
 
-                <button
-                    id="usageNav"
-                    class="nav-item officer-only"
-                    data-section="usageSection">
-                    <span>?</span>
+                <button id="usageNav"
+                        class="nav-item officer-only"
+                        data-section="usageSection">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12.5" y="8" width="3" height="10" /><rect x="18" y="5" width="3" height="13" /></svg>
+                    </span>
                     Usage
                 </button>
             </nav>
@@ -161,10 +161,10 @@
                     </div>
                 </div>
 
-                <div class="stats-grid">
+                <div class="stats-grid stats-grid-3">
                     <div class="stat-card">
                         <span class="stat-label">Role</span>
-                        <strong id="dashboardRole">—</strong>
+                        <strong id="dashboardRole">â€“</strong>
                     </div>
 
                     <div class="stat-card">
@@ -174,55 +174,26 @@
 
                     <div class="stat-card">
                         <span class="stat-label">Latest Run</span>
-                        <strong id="dashboardRun">—</strong>
-                    </div>
-
-                    <div class="stat-card">
-                        <span class="stat-label">Mode</span>
-                        <strong>Human Approved</strong>
+                        <strong id="dashboardRun">â€“</strong>
                     </div>
                 </div>
 
-                <div class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h3>How it works</h3>
-                            <p>Evidence-first government service workflow</p>
-                        </div>
+                <div class="workflow-strip">
+                    <div class="workflow-step">
+                        <span class="step-number">1</span>
+                        <span>Identify eligibility</span>
                     </div>
-
-                    <div class="workflow-steps">
-                        <div class="workflow-step">
-                            <span class="step-number">1</span>
-                            <div>
-                                <strong>Identify</strong>
-                                <p>Find the relevant service and eligibility.</p>
-                            </div>
-                        </div>
-
-                        <div class="workflow-step">
-                            <span class="step-number">2</span>
-                            <div>
-                                <strong>Resolve</strong>
-                                <p>Retrieve documents, fees and timelines.</p>
-                            </div>
-                        </div>
-
-                        <div class="workflow-step">
-                            <span class="step-number">3</span>
-                            <div>
-                                <strong>Draft</strong>
-                                <p>Create a grounded response with citations.</p>
-                            </div>
-                        </div>
-
-                        <div class="workflow-step">
-                            <span class="step-number">4</span>
-                            <div>
-                                <strong>Approve</strong>
-                                <p>An officer reviews before final action.</p>
-                            </div>
-                        </div>
+                    <div class="workflow-step">
+                        <span class="step-number">2</span>
+                        <span>Resolve procedure</span>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="step-number">3</span>
+                        <span>Draft the response</span>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="step-number">4</span>
+                        <span>Officer approves</span>
                     </div>
                 </div>
             </section>
@@ -244,25 +215,22 @@
                         <div class="form-group">
                             <label for="situation">Citizen situation</label>
 
-                            <textarea
-                                id="situation"
-                                rows="7"
-                                placeholder="Example: What documents are required for the government service?"
-                                required></textarea>
+                            <textarea id="situation"
+                                      rows="7"
+                                      placeholder="Example: What documents are required for the government service?"
+                                      required></textarea>
                         </div>
 
                         <div class="action-row">
-                            <button
-                                type="submit"
-                                id="executeWorkflowBtn"
-                                class="btn btn-primary">
+                            <button type="submit"
+                                    id="executeWorkflowBtn"
+                                    class="btn btn-primary">
                                 Execute workflow
                             </button>
 
-                            <button
-                                type="button"
-                                id="clearAskBtn"
-                                class="btn btn-secondary">
+                            <button type="button"
+                                    id="clearAskBtn"
+                                    class="btn btn-secondary">
                                 Clear
                             </button>
                         </div>
@@ -292,7 +260,7 @@
                             </div>
 
                             <span id="workflowStatus" class="status-badge">
-                                —
+                                â€“
                             </span>
                         </div>
 
@@ -312,9 +280,8 @@
                         </div>
                     </div>
 
-                    <div
-                        id="approvalPanel"
-                        class="panel officer-only hidden">
+                    <div id="approvalPanel"
+                         class="panel officer-only hidden">
 
                         <div class="panel-header">
                             <div>
@@ -332,41 +299,35 @@
                                 Draft response
                             </label>
 
-                            <textarea
-                                id="editedDraft"
-                                rows="10"></textarea>
+                            <textarea id="editedDraft"
+                                      rows="10"></textarea>
                         </div>
 
                         <div class="action-row">
-                            <button
-                                id="approveBtn"
-                                class="btn btn-success">
+                            <button id="approveBtn"
+                                    class="btn btn-success">
                                 Approve
                             </button>
 
-                            <button
-                                id="rejectBtn"
-                                class="btn btn-danger">
+                            <button id="rejectBtn"
+                                    class="btn btn-danger">
                                 Reject
                             </button>
                         </div>
 
-                        <div
-                            id="rejectReasonContainer"
-                            class="form-group hidden">
+                        <div id="rejectReasonContainer"
+                             class="form-group hidden">
 
                             <label for="rejectReason">
                                 Rejection reason
                             </label>
 
-                            <textarea
-                                id="rejectReason"
-                                rows="4"
-                                placeholder="Explain why this draft is rejected..."></textarea>
+                            <textarea id="rejectReason"
+                                      rows="4"
+                                      placeholder="Explain why this draft is rejected..."></textarea>
 
-                            <button
-                                id="confirmRejectBtn"
-                                class="btn btn-danger">
+                            <button id="confirmRejectBtn"
+                                    class="btn btn-danger">
                                 Confirm rejection
                             </button>
                         </div>
@@ -374,101 +335,97 @@
                 </div>
             </section>
 
-            <!-- Runs -->
+            <!-- Runs (Load + Replay combined) -->
             <section id="runsSection" class="content-section">
 
                 <div class="section-heading">
                     <p class="eyebrow">Auditability</p>
-                    <h2>Run details</h2>
-                    <p>Inspect a persisted workflow run by its ID.</p>
+                    <h2>Runs</h2>
+                    <p>Inspect a persisted workflow run, or replay one by its original ID.</p>
                 </div>
 
-                <div class="panel">
-                    <form id="runForm">
-                        <div class="form-row">
-                            <div class="form-group grow">
-                                <label for="runIdInput">Run ID</label>
-                                <input
-                                    id="runIdInput"
-                                    type="text"
-                                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                                    required />
-                            </div>
-
-                            <div class="form-group form-action">
-                                <button
-                                    type="submit"
-                                    class="btn btn-primary">
-                                    Load run
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="runLoadPanel" type="button">
+                        Load a run
+                    </button>
+                    <button class="tab-btn" data-tab="runReplayPanel" type="button">
+                        Replay a run
+                    </button>
                 </div>
 
-                <div id="runDetailsPanel" class="panel hidden">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Persisted Run</p>
-                            <h3 id="runDetailsTitle">Run</h3>
-                        </div>
+                <div id="runLoadPanel" class="tab-panel active">
+                    <div class="panel">
+                        <form id="runForm">
+                            <div class="form-row">
+                                <div class="form-group grow">
+                                    <label for="runIdInput">Run ID</label>
+                                    <input id="runIdInput"
+                                           type="text"
+                                           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                           required />
+                                </div>
 
-                        <span id="runDetailsStatus" class="status-badge">—</span>
+                                <div class="form-group form-action">
+                                    <button type="submit"
+                                            class="btn btn-primary">
+                                        Load run
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
 
-                    <pre id="runDetailsJson" class="json-view"></pre>
-                </div>
-            </section>
-
-            <!-- Replay -->
-            <section id="replaySection" class="content-section">
-
-                <div class="section-heading">
-                    <p class="eyebrow">Audit & Replay</p>
-                    <h2>Replay a run</h2>
-                    <p>
-                        Re-run a persisted workflow using its original run ID.
-                    </p>
-                </div>
-
-                <div class="panel">
-                    <form id="replayForm">
-
-                        <div class="form-row">
-                            <div class="form-group grow">
-                                <label for="replayRunId">
-                                    Original run ID
-                                </label>
-
-                                <input
-                                    id="replayRunId"
-                                    type="text"
-                                    placeholder="Enter original run ID"
-                                    required />
+                    <div id="runDetailsPanel" class="panel hidden">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Persisted Run</p>
+                                <h3 id="runDetailsTitle">Run</h3>
                             </div>
 
-                            <div class="form-group form-action">
-                                <button
-                                    type="submit"
-                                    class="btn btn-primary">
-                                    Replay run
-                                </button>
-                            </div>
+                            <span id="runDetailsStatus" class="status-badge">â€“</span>
                         </div>
-                    </form>
+
+                        <pre id="runDetailsJson" class="json-view"></pre>
+                    </div>
                 </div>
 
-                <div id="replayResult" class="panel hidden">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Replay Result</p>
-                            <h3>New run created</h3>
-                        </div>
+                <div id="runReplayPanel" class="tab-panel">
+                    <div class="panel">
+                        <form id="replayForm">
+                            <div class="form-row">
+                                <div class="form-group grow">
+                                    <label for="replayRunId">
+                                        Original run ID
+                                    </label>
+
+                                    <input id="replayRunId"
+                                           type="text"
+                                           placeholder="Enter original run ID"
+                                           required />
+                                </div>
+
+                                <div class="form-group form-action">
+                                    <button type="submit"
+                                            class="btn btn-primary">
+                                        Replay run
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
 
-                    <div class="result-highlight">
-                        <span>Replay Run ID</span>
-                        <strong id="replayRunIdResult">—</strong>
+                    <div id="replayResult" class="panel hidden">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Replay Result</p>
+                                <h3>New run created</h3>
+                            </div>
+                        </div>
+
+                        <div class="result-highlight">
+                            <span>Replay Run ID</span>
+                            <strong id="replayRunIdResult">â€“</strong>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -493,9 +450,8 @@
             </section>
 
             <!-- Usage -->
-            <section
-                id="usageSection"
-                class="content-section officer-only">
+            <section id="usageSection"
+                     class="content-section officer-only">
 
                 <div class="section-heading">
                     <p class="eyebrow">Observability</p>
@@ -506,22 +462,22 @@
                 <div id="usageGrid" class="stats-grid">
                     <div class="stat-card">
                         <span class="stat-label">Requests</span>
-                        <strong id="usageRequests">—</strong>
+                        <strong id="usageRequests">â€“</strong>
                     </div>
 
                     <div class="stat-card">
                         <span class="stat-label">Prompt Tokens</span>
-                        <strong id="usagePromptTokens">—</strong>
+                        <strong id="usagePromptTokens">â€“</strong>
                     </div>
 
                     <div class="stat-card">
                         <span class="stat-label">Completion Tokens</span>
-                        <strong id="usageCompletionTokens">—</strong>
+                        <strong id="usageCompletionTokens">â€“</strong>
                     </div>
 
                     <div class="stat-card">
                         <span class="stat-label">Total Tokens</span>
-                        <strong id="usageTotalTokens">—</strong>
+                        <strong id="usageTotalTokens">â€“</strong>
                     </div>
                 </div>
 

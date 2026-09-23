@@ -13,6 +13,7 @@ using DomainCopilot.Infrastructure.Providers.OpenAI;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.OpenApi;
 using DomainCopilot.Infrastructure.Usage;
 using DomainCopilot.Infrastructure.Providers.Gemini;
 using DomainCopilot.Infrastructure.Persistence;
@@ -102,6 +103,36 @@ builder.Services.AddSingleton(sp =>
 // OpenAPI
 builder.Services.AddOpenApi();
 
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc(
+        "v1",
+        new OpenApiInfo
+        {
+            Title = "DomainCopilot API",
+            Version = "v1"
+        });
+
+    options.AddSecurityDefinition(
+        "bearer",
+        new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            Description =
+                "Enter your JWT token. Example: Bearer eyJ..."
+        });
+
+    options.AddSecurityRequirement(document =>
+        new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference(
+                "bearer",
+                document)] = []
+        });
+});
+
 var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseDefaultFiles();
@@ -111,6 +142,17 @@ app.UseStaticFiles();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    app.UseSwagger();
+
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint(
+            "/swagger/v1/swagger.json",
+            "DomainCopilot API v1");
+
+        options.DocumentTitle = "DomainCopilot API";
+    });
 }
 app.UseAuthentication();
 app.UseAuthorization();

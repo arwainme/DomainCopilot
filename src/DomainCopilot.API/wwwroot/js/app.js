@@ -116,6 +116,28 @@ function setupNavigation() {
             activateSection(button.dataset.section);
         });
     });
+
+    document.querySelectorAll(".tab-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+            activateTab(button.dataset.tab);
+        });
+    });
+}
+
+function activateTab(tabId) {
+    document.querySelectorAll(".tab-btn").forEach((button) => {
+        button.classList.toggle(
+            "active",
+            button.dataset.tab === tabId
+        );
+    });
+
+    document.querySelectorAll(".tab-panel").forEach((panel) => {
+        panel.classList.toggle(
+            "active",
+            panel.id === tabId
+        );
+    });
 }
 
 function activateSection(sectionId) {
@@ -136,8 +158,7 @@ function activateSection(sectionId) {
     const titles = {
         dashboardSection: "Dashboard",
         askSection: "Ask Service",
-        runsSection: "Run Details",
-        replaySection: "Replay",
+        runsSection: "Runs",
         toolsSection: "Tools",
         usageSection: "Usage"
     };
@@ -486,14 +507,14 @@ function renderCitations(citations, workflowData) {
             citation?.DocumentId ||
             matchingEvidence?.documentId ||
             matchingEvidence?.DocumentId ||
-            "—";
+            "–";
 
         const location =
             citation?.pageNumber ||
             citation?.PageNumber ||
             matchingEvidence?.pageNumber ||
             matchingEvidence?.PageNumber ||
-            "—";
+            "–";
 
         const content =
             matchingEvidence?.content ||
@@ -517,7 +538,7 @@ function renderCitations(citations, workflowData) {
         const chunk = document.createElement("span");
         chunk.className = "citation-source";
         chunk.textContent =
-            `Chunk ID: ${chunkId || "—"}`;
+            `Chunk ID: ${chunkId || "–"}`;
 
         const locationElement = document.createElement("span");
         locationElement.className = "citation-source";
@@ -698,7 +719,7 @@ async function loadRunById(runId) {
                 "Status",
                 "runStatus",
                 "RunStatus"
-            ]) || "—";
+            ]) || "–";
 
         elements.runDetailsStatus.textContent =
             status;
@@ -871,17 +892,17 @@ function renderTools(tools) {
             typeof tool === "string"
                 ? tool
                 : tool?.name ||
-                  tool?.Name ||
-                  tool?.toolName ||
-                  tool?.ToolName ||
-                  `Tool ${index + 1}`;
+                tool?.Name ||
+                tool?.toolName ||
+                tool?.ToolName ||
+                `Tool ${index + 1}`;
 
         const description =
             typeof tool === "string"
                 ? "Registered server-side agent tool."
                 : tool?.description ||
-                  tool?.Description ||
-                  "Registered server-side agent tool.";
+                tool?.Description ||
+                "Registered server-side agent tool.";
 
         const heading = document.createElement("h3");
         heading.textContent = name;
@@ -1182,7 +1203,7 @@ function saveLatestRunId(runId) {
 
 function shortenId(value) {
     if (!value) {
-        return "—";
+        return "–";
     }
 
     const text = String(value);
@@ -1256,5 +1277,3 @@ function hideWorkflowResult() {
     elements.approvalPanel.classList.add("hidden");
     elements.runDetailsPanel.classList.add("hidden");
 }
-
-
