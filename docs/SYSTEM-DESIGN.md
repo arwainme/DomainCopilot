@@ -10,15 +10,17 @@ The D4 Government workflow accepts a citizen situation, identifies the relevant 
 
 The solution follows Clean Architecture:
 
-- Domain: entities, enums, and business rules.
-- Application: use cases, workflows, agents, services, DTOs, and abstractions.
-- Infrastructure: persistence, LLM providers, retrieval, embeddings, audit, and external integrations.
-- API: HTTP endpoints, authentication, authorization, SSE streaming, and middleware.
+- **Domain**: entities, enums, and business rules.
+- **Application**: use cases, workflows, agents, services, DTOs, and abstractions.
+- **Infrastructure**: persistence, LLM providers, retrieval, embeddings, audit, and external integrations.
+- **API**: HTTP endpoints, authentication, authorization, SSE streaming, and middleware.
 
 Dependency direction:
 
+```text
 API -> Application -> Domain
 Infrastructure -> Application -> Domain
+```
 
 ## 3. Main Components
 
@@ -53,12 +55,14 @@ The workflow coordinates retrieval and tool calls and stops before final complet
 
 The retrieval layer combines:
 
-1. lexical / keyword matching
-2. semantic similarity over persisted embeddings
+1. Lexical / keyword matching
+2. Semantic similarity over persisted embeddings
 
 The current fusion is:
 
-`finalScore = 0.45 * lexicalScore + 0.55 * semanticScore`
+```text
+finalScore = 0.45 * lexicalScore + 0.55 * semanticScore
+```
 
 Retrieved evidence is returned with source/chunk metadata for citation.
 
@@ -76,10 +80,10 @@ This is intentionally an MVP vector-storage approach rather than a dedicated ext
 
 The application uses an abstraction (`ILlmProvider`) covering:
 
-- completion
-- streaming
-- tool calls
-- embeddings
+- Completion
+- Streaming
+- Tool calls
+- Embeddings
 
 Current configured providers:
 
@@ -95,9 +99,9 @@ Government workflow runs enter a waiting-for-approval state before the final off
 
 Officer actions include:
 
-- approve
-- reject
-- edit-and-approve
+- Approve
+- Reject
+- Edit-and-approve
 
 Approval actions are audited.
 
@@ -138,7 +142,9 @@ Officer Approval Gate
   |
   v
 Persisted Run / Audit
-5. Resilience
+```
+
+## 5. Resilience
 
 Provider selection supports a primary/fallback model.
 
@@ -146,30 +152,31 @@ If the primary completion or streaming provider fails before output is produced,
 
 Document embedding ingestion also supports batching, cancellation, and retry/backoff for rate-limit failures.
 
-6. Security
+## 6. Security
 
 The API uses JWT authentication with role-based authorization.
 
 Sensitive endpoints are protected server-side.
 
-Security controls and prompt-injection considerations are documented in docs/SECURITY.md.
+Security controls and prompt-injection considerations are documented in `docs/SECURITY.md`.
 
 Secrets are supplied through environment/configuration and are not stored in source control.
 
-7. Observability
+## 7. Observability
 
 The system records:
 
-correlation identifiers
-run identifiers
-provider/model usage
-token usage where returned by the provider
-estimated usage cost where applicable
-persisted run and audit information
+- Correlation identifiers
+- Run identifiers
+- Provider/model usage
+- Token usage where returned by the provider
+- Estimated usage cost where applicable
+- Persisted run and audit information
 
-Health checking is available through /health.
+Health checking is available through `/health`.
 
-8. Known MVP Boundaries
-SQL Server stores embeddings instead of a dedicated vector database.
-Local Ollama is supported by the provider abstraction but is not required for the demonstrated deployment.
-OpenAI-compatible providers remain configurable alternatives; the demonstrated zero-cost path uses Gemini/OpenRouter.
+## 8. Known MVP Boundaries
+
+- SQL Server stores embeddings instead of a dedicated vector database.
+- Local Ollama is supported by the provider abstraction but is not required for the demonstrated deployment.
+- OpenAI-compatible providers remain configurable alternatives; the demonstrated zero-cost path uses Gemini/OpenRouter.
