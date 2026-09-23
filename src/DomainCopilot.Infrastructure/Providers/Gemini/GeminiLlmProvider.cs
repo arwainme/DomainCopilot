@@ -1,8 +1,9 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 
 namespace DomainCopilot.Infrastructure.Providers.Gemini;
 
@@ -115,14 +116,166 @@ public sealed class GeminiLlmProvider : ILlmProvider
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
-        var result =
-            await CompleteAsync(
-                prompt,
+        var apiKey =
+            Environment.GetEnvironmentVariable(
+                "Gemini__ApiKey");
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException(
+                "Gemini API key is not configured.");
+        }
+
+        var request = new
+        {
+            contents = new[]
+            {
+            new
+            {
+                parts = new[]
+                {
+                    new
+                    {
+                        text = prompt
+                    }
+                }
+            }
+        }
+        };
+
+        using var httpRequest =
+            new HttpRequestMessage(
+                HttpMethod.Post,
+                $"v1beta/models/{_options.Gemini.Model}:streamGenerateContent?alt=sse");
+
+        httpRequest.Headers.Add(
+            "x-goog-api-key",
+            apiKey);
+
+        httpRequest.Content =
+            JsonContent.Create(request);
+
+        using var response =
+            await _httpClient.SendAsync(
+                httpRequest,
+                HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
 
-        yield return result;
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody =
+                await response.Content.ReadAsStringAsync(
+                    cancellationToken);
+
+            throw new HttpRequestException(
+                $"Gemini streaming API failed with status " +
+                $"{(int)response.StatusCode}: {responseBody}");
+        }
+
+        await using var stream =
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
+
+        using var reader =
+            new StreamReader(stream);
+
+        var fullResponse = new StringBuilder();
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var line =
+                await reader.ReadLineAsync(
+                    cancellationToken);
+
+            if (line is null)
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var data =
+                line["data:".Length..].Trim();
+
+            if (data == "[DONE]")
+            {
+                break;
+            }
+
+            using var document =
+                JsonDocument.Parse(data);
+
+            if (!document.RootElement.TryGetProperty(
+                    "candidates",
+                    out var candidates) ||
+                candidates.GetArrayLength() == 0)
+            {
+                continue;
+            }
+
+            var candidate =
+                candidates[0];
+
+            if (!candidate.TryGetProperty(
+                    "content",
+                    out var content))
+            {
+                continue;
+            }
+
+            if (!content.TryGetProperty(
+                    "parts",
+                    out var parts) ||
+                parts.GetArrayLength() == 0)
+            {
+                continue;
+            }
+
+            var textPart =
+                parts[0];
+
+            if (!textPart.TryGetProperty(
+                    "text",
+                    out var textElement))
+            {
+                continue;
+            }
+
+            var text =
+                textElement.GetString();
+
+            if (string.IsNullOrEmpty(text))
+            {
+                continue;
+            }
+
+            fullResponse.Append(text);
+
+            yield return text;
+        }
+
+        if (fullResponse.Length > 0)
+        {
+            _usageTracker.Record(
+                new LlmUsage(
+                    Provider: "Gemini",
+                    Model: _options.Gemini.Model,
+                    InputTokens: EstimateTokens(prompt),
+                    OutputTokens: EstimateTokens(fullResponse.ToString()),
+                    EstimatedCostUsd: 0m));
+        }
     }
 
     public Task<string> CallWithToolsAsync(
