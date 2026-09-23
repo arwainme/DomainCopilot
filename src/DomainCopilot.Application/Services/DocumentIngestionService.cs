@@ -145,31 +145,50 @@ public sealed class DocumentIngestionService
             var persistedChunks =
                 new List<DocumentChunk>();
 
-            foreach (var evidence in evidenceChunks)
+            var texts =
+                evidenceChunks
+                    .Select(x => x.Content)
+                    .ToArray();
+
+            IReadOnlyList<IReadOnlyList<float>> embeddings;
+
+            try
+            {
+                embeddings =
+                    await _llmProvider.GenerateEmbeddingsAsync(
+                        texts,
+                        cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Batch embedding failed.",
+                    ex);
+            }
+
+            if (embeddings.Count != evidenceChunks.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Embedding count mismatch. " +
+                    $"Expected {evidenceChunks.Count}, " +
+                    $"received {embeddings.Count}.");
+            }
+
+            for (var i = 0; i < evidenceChunks.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                IReadOnlyList<float> embedding;
+                var evidence =
+                    evidenceChunks[i];
 
-                try
-                {
-                    embedding =
-                        await _llmProvider.GenerateEmbeddingAsync(
-                            evidence.Content,
-                            cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException(
-                        $"Embedding failed for chunk {evidence.ChunkId}.",
-                        ex);
-                }
+                var embedding =
+                    embeddings[i];
 
                 var chunk =
                     new DocumentChunk(
                         evidence.DocumentId,
                         evidence.Content,
-                        persistedChunks.Count,
+                        i,
                         pageNumber: ParsePageNumber(
                             evidence.PageNumber),
                         id: evidence.ChunkId);

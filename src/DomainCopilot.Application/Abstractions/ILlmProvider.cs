@@ -18,4 +18,8 @@ public interface ILlmProvider
     Task<IReadOnlyList<float>> GenerateEmbeddingAsync(
         string text,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<IReadOnlyList<float>>> GenerateEmbeddingsAsync(
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken = default);
 }
