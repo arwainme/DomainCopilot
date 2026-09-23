@@ -50,11 +50,13 @@ public sealed class FileAuditStore : IAuditStore
         string output,
         CancellationToken cancellationToken = default)
     {
-        await _lock.WaitAsync(cancellationToken);
+        await _lock.WaitAsync(CancellationToken.None);
 
         try
         {
-            var existing = await LoadAsync(runId, cancellationToken);
+            var existing = await LoadAsync(
+                runId,
+                CancellationToken.None);
 
             if (existing is null)
             {
@@ -82,14 +84,15 @@ public sealed class FileAuditStore : IAuditStore
                 Steps = updatedSteps
             };
 
-            await SaveUnlockedAsync(updatedRun, cancellationToken);
+            await SaveUnlockedAsync(
+                updatedRun,
+                CancellationToken.None);
         }
         finally
         {
             _lock.Release();
         }
     }
-
     public async Task CompleteRunAsync(
         Guid runId,
         CancellationToken cancellationToken = default)

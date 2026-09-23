@@ -1,4 +1,5 @@
 using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Infrastructure.Providers.Gemini;
 using DomainCopilot.Infrastructure.Providers.Local;
 using DomainCopilot.Infrastructure.Providers.OpenAI;
 using Microsoft.Extensions.Options;
@@ -9,31 +10,38 @@ public sealed class LlmProviderSelector : ILlmProvider
 {
     private readonly OpenAiLlmProvider _openAiProvider;
     private readonly LocalLlmProvider _localProvider;
+    private readonly GeminiLlmProvider _geminiProvider;
     private readonly LlmProviderOptions _options;
 
     public LlmProviderSelector(
         OpenAiLlmProvider openAiProvider,
         LocalLlmProvider localProvider,
+        GeminiLlmProvider geminiProvider,
         IOptions<LlmProviderOptions> options)
     {
         _openAiProvider = openAiProvider;
         _localProvider = localProvider;
+        _geminiProvider = geminiProvider;
         _options = options.Value;
     }
 
+    private ILlmProvider GetProvider(string providerName)
+    {
+        return providerName.ToLowerInvariant() switch
+        {
+            "openai" => _openAiProvider,
+            "gemini" => _geminiProvider,
+            "local" => _localProvider,
+            _ => throw new InvalidOperationException(
+                $"Unknown LLM provider: {providerName}")
+        };
+    }
+
     private ILlmProvider Primary =>
-        _options.PrimaryProvider.Equals(
-            "Local",
-            StringComparison.OrdinalIgnoreCase)
-            ? _localProvider
-            : _openAiProvider;
+        GetProvider(_options.PrimaryProvider);
 
     private ILlmProvider Fallback =>
-        _options.FallbackProvider.Equals(
-            "OpenAI",
-            StringComparison.OrdinalIgnoreCase)
-            ? _openAiProvider
-            : _localProvider;
+        GetProvider(_options.FallbackProvider);
 
     public async Task<string> CompleteAsync(
         string prompt,

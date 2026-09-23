@@ -217,6 +217,20 @@ public sealed class RetrievalService : IRetrievalService
             return Array.Empty<EvidenceChunk>();
         }
 
+        // Phase 1: lexical candidate generation.
+        // This avoids requesting embeddings for every chunk in the corpus.
+        var lexicalCandidates = _chunks
+            .Select(chunk => new
+            {
+                Chunk = chunk,
+                LexicalScore = CalculateLexicalScore(terms, chunk)
+            })
+            .Where(x => x.LexicalScore >= 1)
+            .OrderByDescending(x => x.LexicalScore)
+            .ThenBy(x => x.Chunk.ChunkId)
+            .Take(40)
+            .ToList();
+
         IReadOnlyList<float>? queryEmbedding = null;
 
         try
@@ -229,21 +243,18 @@ public sealed class RetrievalService : IRetrievalService
         catch (Exception ex)
         {
             Console.WriteLine(
-                $"[Retrieval] Embedding retrieval unavailable: {ex.Message}");
+                $"[Retrieval] Query embedding unavailable. " +
+                $"Falling back to lexical retrieval: {ex.Message}");
         }
 
         var ranked = new List<(EvidenceChunk Chunk, double Score)>();
 
-        foreach (var chunk in _chunks)
+        foreach (var candidate in lexicalCandidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var lexicalScore =
-                CalculateLexicalScore(
-                    terms,
-                    chunk);
-
-            double semanticScore = 0;
+            var lexicalScore = candidate.LexicalScore;
+            var semanticScore = 0.0;
 
             if (queryEmbedding is not null &&
                 queryEmbedding.Count > 0)
@@ -252,7 +263,7 @@ public sealed class RetrievalService : IRetrievalService
                 {
                     var chunkEmbedding =
                         await GetEmbeddingAsync(
-                            chunk.Content,
+                            candidate.Chunk.Content,
                             cancellationToken);
 
                     semanticScore =
@@ -263,24 +274,9 @@ public sealed class RetrievalService : IRetrievalService
                 catch (Exception ex)
                 {
                     Console.WriteLine(
-                        $"[Retrieval] Chunk embedding failed: {ex.Message}");
+                        $"[Retrieval] Chunk embedding unavailable. " +
+                        $"Using lexical score for this chunk: {ex.Message}");
                 }
-            }
-
-            var hasLexicalEvidence =
-                lexicalScore >= 1;
-
-            var hasStrongSemanticEvidence =
-                semanticScore >= StrongSemanticThreshold;
-
-            var hasMinimumSemanticEvidence =
-                semanticScore >= MinimumSemanticThreshold;
-
-            if (!hasLexicalEvidence &&
-                !hasStrongSemanticEvidence &&
-                !hasMinimumSemanticEvidence)
-            {
-                continue;
             }
 
             var normalizedLexical =
@@ -296,8 +292,13 @@ public sealed class RetrievalService : IRetrievalService
                       (semanticScore * 0.55)
                     : normalizedLexical;
 
-            ranked.Add(
-                (chunk, finalScore));
+            // Keep lexical evidence, or strong semantic evidence.
+            if (lexicalScore >= 1 ||
+                semanticScore >= MinimumSemanticThreshold)
+            {
+                ranked.Add(
+                    (candidate.Chunk, finalScore));
+            }
         }
 
         var results = ranked
@@ -308,11 +309,13 @@ public sealed class RetrievalService : IRetrievalService
             .ToList();
 
         Console.WriteLine(
-            $"[Retrieval] Query='{query}' Terms={string.Join(",", terms)} Results={results.Count}");
+            $"[Retrieval] Query='{query}' " +
+            $"Terms={string.Join(",", terms)} " +
+            $"LexicalCandidates={lexicalCandidates.Count} " +
+            $"Results={results.Count}");
 
         return results;
     }
-
     private static HashSet<string> BuildQueryTerms(
         string query)
     {
