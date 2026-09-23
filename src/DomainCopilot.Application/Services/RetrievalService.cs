@@ -1,7 +1,7 @@
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Agents;
 using DomainCopilot.Application.DTOs;
-
+using DomainCopilot.Application.Abstractions;
 namespace DomainCopilot.Application.Services;
 
 public sealed class RetrievalService : IRetrievalService
@@ -12,7 +12,7 @@ public sealed class RetrievalService : IRetrievalService
 
     private readonly IReadOnlyCollection<EvidenceChunk> _chunks;
     private readonly ILlmProvider _llmProvider;
-
+    private readonly DocumentIngestionService _ingestionService;
     private readonly Dictionary<string, IReadOnlyList<float>> _embeddingCache =
         new(StringComparer.Ordinal);
 
@@ -181,9 +181,12 @@ public sealed class RetrievalService : IRetrievalService
             ]
         };
 
-    public RetrievalService(ILlmProvider llmProvider)
+    public RetrievalService(
+        ILlmProvider llmProvider,
+        DocumentIngestionService ingestionService)
     {
         _llmProvider = llmProvider;
+        _ingestionService = ingestionService;
 
         var projectRoot = FindProjectRoot();
 
@@ -453,7 +456,7 @@ public sealed class RetrievalService : IRetrievalService
                 Math.Sqrt(magnitudeB));
     }
 
-    private static IReadOnlyCollection<EvidenceChunk> LoadDocuments(
+    private IReadOnlyCollection<EvidenceChunk> LoadDocuments(
         string documentsPath)
     {
         if (!Directory.Exists(documentsPath))
@@ -477,21 +480,14 @@ public sealed class RetrievalService : IRetrievalService
 
         foreach (var filePath in files)
         {
-            var ingestionService =
-                new DocumentIngestionService();
-
             var fileChunks =
-                ingestionService
-                    .IngestAsync(filePath)
-                    .GetAwaiter()
-                    .GetResult();
+                _ingestionService.ExtractAndChunk(filePath);
 
             chunks.AddRange(fileChunks);
         }
 
         return chunks;
     }
-
     private static string FindProjectRoot()
     {
         var directory =

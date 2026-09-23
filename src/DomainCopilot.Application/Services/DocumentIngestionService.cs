@@ -23,6 +23,58 @@ public sealed class DocumentIngestionService
         _llmProvider = llmProvider;
     }
 
+    // Extraction/chunking only.
+    // Used by retrieval at startup without database writes or embeddings.
+    public IReadOnlyList<EvidenceChunk> ExtractAndChunk(
+        string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException(
+                "Document was not found.",
+                filePath);
+        }
+
+        var extension =
+            Path.GetExtension(filePath).ToLowerInvariant();
+
+        if (extension is not ".txt" and not ".pdf")
+        {
+            throw new NotSupportedException(
+                $"Unsupported document format: {extension}");
+        }
+
+        var contentHash =
+            ComputeFileHash(filePath);
+
+        var text = extension switch
+        {
+            ".txt" => File.ReadAllText(filePath),
+
+            ".pdf" => ExtractPdfText(filePath),
+
+            _ => throw new NotSupportedException()
+        };
+
+        text = CleanText(text);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new InvalidOperationException(
+                "The document contains no readable text.");
+        }
+
+        var documentId =
+            CreateDeterministicGuid(contentHash);
+
+        return CreateChunks(
+            text,
+            documentId,
+            Path.GetFileNameWithoutExtension(filePath),
+            contentHash,
+            extension);
+    }
+
     public async Task<IReadOnlyList<EvidenceChunk>> IngestAsync(
         string filePath,
         CancellationToken cancellationToken = default)
@@ -45,7 +97,8 @@ public sealed class DocumentIngestionService
                 $"Unsupported document format: {extension}");
         }
 
-        var contentHash = ComputeFileHash(filePath);
+        var contentHash =
+            ComputeFileHash(filePath);
 
         var documentId =
             CreateDeterministicGuid(contentHash);
@@ -64,24 +117,8 @@ public sealed class DocumentIngestionService
                 cancellationToken);
         }
 
-        var text = extension switch
-        {
-            ".txt" => await File.ReadAllTextAsync(
-                filePath,
-                cancellationToken),
-
-            ".pdf" => ExtractPdfText(filePath),
-
-            _ => throw new NotSupportedException()
-        };
-
-        text = CleanText(text);
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            throw new InvalidOperationException(
-                "The document contains no readable text.");
-        }
+        var evidenceChunks =
+            ExtractAndChunk(filePath);
 
         var document =
             existing ??
@@ -105,14 +142,6 @@ public sealed class DocumentIngestionService
 
         try
         {
-            var evidenceChunks =
-                CreateChunks(
-                    text,
-                    documentId,
-                    document.Title,
-                    contentHash,
-                    extension);
-
             var persistedChunks =
                 new List<DocumentChunk>();
 
