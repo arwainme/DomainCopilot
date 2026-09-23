@@ -25,7 +25,7 @@ builder.Services.AddDbContext<DomainCopilotDbContext>(options =>
 
 const string jwtSecret =
     "DomainCopilot-Demo-Secret-Key-2026-Change-In-Production";
-
+builder.Services.AddScoped<IDocumentRepository, EfDocumentRepository>();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -53,6 +53,7 @@ builder.Services.AddScoped<SearchEvidenceTool>();
 builder.Services.AddScoped<CheckEligibilityTool>();
 builder.Services.AddScoped<ResolveProcedureTool>();
 builder.Services.AddScoped<SubmitApprovalTool>();
+builder.Services.AddScoped<DocumentIngestionService>();
 
 builder.Services.AddScoped<ITool>(sp =>
     sp.GetRequiredService<SearchEvidenceTool>());

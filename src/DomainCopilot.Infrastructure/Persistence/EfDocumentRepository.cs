@@ -13,6 +13,16 @@ public sealed class EfDocumentRepository : IDocumentRepository
         _db = db;
     }
 
+    public async Task<IReadOnlyList<DocumentChunk>> GetChunksByDocumentIdAsync(
+    Guid documentId,
+    CancellationToken cancellationToken = default)
+    {
+        return await _db.DocumentChunks
+            .Where(x => x.DocumentId == documentId)
+            .OrderBy(x => x.ChunkIndex)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<Document?> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)

@@ -18,4 +18,7 @@ public interface IDocumentRepository
 
     Task SaveChangesAsync(
         CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<DocumentChunk>> GetChunksByDocumentIdAsync(
+    Guid documentId,
+    CancellationToken cancellationToken = default);
 }
