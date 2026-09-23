@@ -15,7 +15,13 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using DomainCopilot.Infrastructure.Usage;
 using DomainCopilot.Infrastructure.Providers.Gemini;
+using DomainCopilot.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<DomainCopilotDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")));
 
 const string jwtSecret =
     "DomainCopilot-Demo-Secret-Key-2026-Change-In-Production";
@@ -154,3 +160,4 @@ app.MapGet("/health", () => Results.Ok(new
 //    });
 
 app.Run();
+

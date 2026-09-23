@@ -1,7 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
 using DomainCopilot.Domain.Entities;
 
 namespace DomainCopilot.Application.Abstractions;
@@ -14,6 +10,10 @@ public interface IDocumentRepository
 
     Task AddAsync(
         Document document,
+        CancellationToken cancellationToken = default);
+
+    Task AddChunksAsync(
+        IEnumerable<DocumentChunk> chunks,
         CancellationToken cancellationToken = default);
 
     Task SaveChangesAsync(

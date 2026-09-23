@@ -27,10 +27,10 @@ public class Document
     public Document(
         string title,
         string source,
-        string? version = null)
+        string? version = null,
+        Guid? id = null)
     {
-        Id = Guid.NewGuid();
-        Title = title;
+        Id = id ?? Guid.NewGuid();
         Source = source;
         Version = version;
         Status = DocumentStatus.Pending;
