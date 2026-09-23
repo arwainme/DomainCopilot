@@ -26,21 +26,26 @@ public class DocumentChunk
     {
         Content = string.Empty;
     }
-
     public DocumentChunk(
         Guid documentId,
         string content,
         int chunkIndex,
         string? section = null,
         int? pageNumber = null,
-        string? clause = null)
+        string? clause = null,
+        Guid? id = null)
     {
-        Id = Guid.NewGuid();
+        Id = id ?? Guid.NewGuid();
         DocumentId = documentId;
         Content = content;
         ChunkIndex = chunkIndex;
         Section = section;
         PageNumber = pageNumber;
         Clause = clause;
+    }
+
+    public void SetEmbedding(string embedding)
+    {
+        Embedding = embedding;
     }
 }
