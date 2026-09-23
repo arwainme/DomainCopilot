@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using DomainCopilot.Infrastructure.Usage;
+using DomainCopilot.Infrastructure.Providers.Gemini;
 var builder = WebApplication.CreateBuilder(args);
 
 const string jwtSecret =
@@ -65,6 +66,8 @@ builder.Services.AddSingleton<IUsageTracker, UsageTracker>();
 builder.Services.AddControllers();
 builder.Services.AddHttpClient<OpenAiLlmProvider>();
 builder.Services.AddHttpClient<LocalLlmProvider>();
+builder.Services.AddHttpClient<GeminiLlmProvider>();
+
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 
 builder.Services.AddScoped<IEligibilityIdentifier, EligibilityIdentifier>();

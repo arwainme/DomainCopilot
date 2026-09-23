@@ -2,8 +2,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
-using Microsoft.Extensions.Options;
 using DomainCopilot.Application.DTOs;
+using Microsoft.Extensions.Options;
 
 namespace DomainCopilot.Infrastructure.Providers.OpenAI;
 
@@ -23,7 +23,7 @@ public sealed class OpenAiLlmProvider : ILlmProvider
         _usageTracker = usageTracker;
 
         _httpClient.BaseAddress = new Uri(
-            _options.OpenAI.BaseUrl);
+            _options.OpenAI.BaseUrl.TrimEnd('/') + "/");
 
         if (!string.IsNullOrWhiteSpace(
                 _options.OpenAI.ApiKey))
@@ -44,12 +44,12 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             model = _options.OpenAI.Model,
             messages = new[]
             {
-            new
-            {
-                role = "user",
-                content = prompt
+                new
+                {
+                    role = "user",
+                    content = prompt
+                }
             }
-        }
         };
 
         using var response = await _httpClient.PostAsJsonAsync(
@@ -95,19 +95,19 @@ public sealed class OpenAiLlmProvider : ILlmProvider
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
-    CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         var request = new
         {
             model = _options.OpenAI.Model,
             messages = new[]
             {
-            new
-            {
-                role = "user",
-                content = prompt
-            }
-        },
+                new
+                {
+                    role = "user",
+                    content = prompt
+                }
+            },
             stream = true
         };
 
@@ -151,10 +151,19 @@ public sealed class OpenAiLlmProvider : ILlmProvider
 
             using var json = JsonDocument.Parse(data);
 
-            var content = json.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("delta")
-                .GetProperty("content");
+            var choices = json.RootElement.GetProperty("choices");
+
+            if (choices.GetArrayLength() == 0)
+                continue;
+
+            var delta = choices[0].GetProperty("delta");
+
+            if (!delta.TryGetProperty(
+                    "content",
+                    out var content))
+            {
+                continue;
+            }
 
             if (content.ValueKind == JsonValueKind.String)
             {
@@ -165,6 +174,7 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             }
         }
     }
+
     public async Task<string> CallWithToolsAsync(
         string prompt,
         IReadOnlyList<string> tools,
@@ -206,11 +216,9 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             .ToArray();
     }
 
-
-
-    private decimal CalculateEstimatedCost(
-    int inputTokens,
-    int outputTokens)
+    private static decimal CalculateEstimatedCost(
+        int inputTokens,
+        int outputTokens)
     {
         const decimal inputPricePerMillion = 0.15m;
         const decimal outputPricePerMillion = 0.60m;
