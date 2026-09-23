@@ -27,8 +27,8 @@ public sealed class LocalLlmProvider : ILlmProvider
     }
 
     public async Task<string> CompleteAsync(
-       string prompt,
-       CancellationToken cancellationToken = default)
+        string prompt,
+        CancellationToken cancellationToken = default)
     {
         var request = new
         {
@@ -44,8 +44,9 @@ public sealed class LocalLlmProvider : ILlmProvider
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(
-            cancellationToken);
+        var result =
+            await response.Content.ReadFromJsonAsync<JsonElement>(
+                cancellationToken);
 
         var output =
             result
@@ -53,23 +54,21 @@ public sealed class LocalLlmProvider : ILlmProvider
                 .GetString()
             ?? string.Empty;
 
-        var inputTokens = EstimateTokens(prompt);
-        var outputTokens = EstimateTokens(output);
-
         _usageTracker.Record(
             new LlmUsage(
                 Provider: "Local",
                 Model: _options.Local.Model,
-                InputTokens: inputTokens,
-                OutputTokens: outputTokens,
+                InputTokens: EstimateTokens(prompt),
+                OutputTokens: EstimateTokens(output),
                 EstimatedCostUsd: 0m));
 
         return output;
     }
+
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation]
-    CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         var request = new
         {
@@ -135,7 +134,9 @@ public sealed class LocalLlmProvider : ILlmProvider
         IReadOnlyList<string> tools,
         CancellationToken cancellationToken = default)
     {
-        return await CompleteAsync(prompt, cancellationToken);
+        return await CompleteAsync(
+            prompt,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<float>> GenerateEmbeddingAsync(
@@ -155,14 +156,38 @@ public sealed class LocalLlmProvider : ILlmProvider
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(
-            cancellationToken);
+        var result =
+            await response.Content.ReadFromJsonAsync<JsonElement>(
+                cancellationToken);
 
         return result
             .GetProperty("embedding")
             .EnumerateArray()
             .Select(x => x.GetSingle())
             .ToArray();
+    }
+
+    public async Task<IReadOnlyList<IReadOnlyList<float>>>
+        GenerateEmbeddingsAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken = default)
+    {
+        var embeddings =
+            new List<IReadOnlyList<float>>(texts.Count);
+
+        foreach (var text in texts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var embedding =
+                await GenerateEmbeddingAsync(
+                    text,
+                    cancellationToken);
+
+            embeddings.Add(embedding);
+        }
+
+        return embeddings;
     }
 
     private static int EstimateTokens(string text)

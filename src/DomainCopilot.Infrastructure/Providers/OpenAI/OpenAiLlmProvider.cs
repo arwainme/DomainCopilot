@@ -144,19 +144,23 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             if (!line.StartsWith("data:"))
                 continue;
 
-            var data = line["data:".Length..].Trim();
+            var data =
+                line["data:".Length..].Trim();
 
             if (data == "[DONE]")
                 yield break;
 
-            using var json = JsonDocument.Parse(data);
+            using var json =
+                JsonDocument.Parse(data);
 
-            var choices = json.RootElement.GetProperty("choices");
+            var choices =
+                json.RootElement.GetProperty("choices");
 
             if (choices.GetArrayLength() == 0)
                 continue;
 
-            var delta = choices[0].GetProperty("delta");
+            var delta =
+                choices[0].GetProperty("delta");
 
             if (!delta.TryGetProperty(
                     "content",
@@ -206,14 +210,38 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             await response.Content.ReadFromJsonAsync<JsonElement>(
                 cancellationToken);
 
-        var embedding = result
-            .GetProperty("data")[0]
-            .GetProperty("embedding");
+        var embedding =
+            result
+                .GetProperty("data")[0]
+                .GetProperty("embedding");
 
         return embedding
             .EnumerateArray()
             .Select(x => x.GetSingle())
             .ToArray();
+    }
+
+    public async Task<IReadOnlyList<IReadOnlyList<float>>>
+        GenerateEmbeddingsAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken = default)
+    {
+        var embeddings =
+            new List<IReadOnlyList<float>>(texts.Count);
+
+        foreach (var text in texts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var embedding =
+                await GenerateEmbeddingAsync(
+                    text,
+                    cancellationToken);
+
+            embeddings.Add(embedding);
+        }
+
+        return embeddings;
     }
 
     private static decimal CalculateEstimatedCost(
@@ -231,3 +259,4 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             outputPricePerMillion;
     }
 }
+

@@ -1,4 +1,5 @@
 using DomainCopilot.Application.Abstractions;
+using DomainCopilot.Application.DTOs;
 using DomainCopilot.Infrastructure.Providers.Gemini;
 using DomainCopilot.Infrastructure.Providers.Local;
 using DomainCopilot.Infrastructure.Providers.OpenAI;
@@ -119,6 +120,25 @@ public sealed class LlmProviderSelector : ILlmProvider
         {
             return await Fallback.GenerateEmbeddingAsync(
                 text,
+                cancellationToken);
+        }
+    }
+
+    public async Task<IReadOnlyList<IReadOnlyList<float>>>
+        GenerateEmbeddingsAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await Primary.GenerateEmbeddingsAsync(
+                texts,
+                cancellationToken);
+        }
+        catch
+        {
+            return await Fallback.GenerateEmbeddingsAsync(
+                texts,
                 cancellationToken);
         }
     }
