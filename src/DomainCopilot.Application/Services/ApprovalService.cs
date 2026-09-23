@@ -2,6 +2,8 @@
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
 
+namespace DomainCopilot.Application.Services;
+
 public sealed class ApprovalService : IApprovalService
 {
     private readonly ConcurrentDictionary<Guid, ApprovalState> _requests = new();
@@ -14,6 +16,7 @@ public sealed class ApprovalService : IApprovalService
         var state = new ApprovalState(
             runId,
             "Pending",
+            null,
             null,
             null,
             null);
@@ -68,10 +71,42 @@ public sealed class ApprovalService : IApprovalService
         return Task.CompletedTask;
     }
 
+    public Task EditAndApproveAsync(
+        Guid runId,
+        string officerId,
+        string editedResponse,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(editedResponse))
+        {
+            throw new ArgumentException(
+                "Edited response cannot be empty.",
+                nameof(editedResponse));
+        }
+
+        if (!_requests.TryGetValue(runId, out var request))
+        {
+            throw new InvalidOperationException(
+                $"Approval request for run '{runId}' was not found.");
+        }
+
+        _requests[runId] = request with
+        {
+            Status = "Approved",
+            OfficerId = officerId,
+            EditedResponse = editedResponse,
+            DecisionAt = DateTime.UtcNow
+        };
+
+        return Task.CompletedTask;
+    }
+
     private sealed record ApprovalState(
         Guid RunId,
         string Status,
         string? OfficerId,
         string? Reason,
-        DateTime? DecisionAt);
+        DateTime? DecisionAt,
+        string? DraftResponse,
+        string? EditedResponse = null);
 }
