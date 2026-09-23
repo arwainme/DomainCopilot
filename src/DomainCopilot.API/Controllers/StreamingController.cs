@@ -10,10 +10,14 @@ namespace DomainCopilot.API.Controllers;
 public sealed class StreamingController : ControllerBase
 {
     private readonly ILlmProvider _llmProvider;
+    private readonly ILogger<StreamingController> _logger;
 
-    public StreamingController(ILlmProvider llmProvider)
+    public StreamingController(
+        ILlmProvider llmProvider,
+        ILogger<StreamingController> logger)
     {
         _llmProvider = llmProvider;
+        _logger = logger;
     }
 
     [HttpGet("stream")]
@@ -21,18 +25,39 @@ public sealed class StreamingController : ControllerBase
         [FromQuery] string prompt,
         CancellationToken cancellationToken)
     {
-        Response.ContentType = "text/plain; charset=utf-8";
+        using var linkedCts =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                HttpContext.RequestAborted);
 
-        await foreach (var chunk in _llmProvider.StreamAsync(
-            prompt,
-            cancellationToken))
+        var streamCancellationToken = linkedCts.Token;
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
         {
-            await Response.WriteAsync(
-                chunk,
-                cancellationToken);
+            await Response.StartAsync(streamCancellationToken);
 
-            await Response.Body.FlushAsync(
-                cancellationToken);
+            await foreach (var chunk in _llmProvider.StreamAsync(
+                prompt,
+                streamCancellationToken))
+            {
+                await Response.WriteAsync(
+                    $"data: {chunk}\n\n",
+                    streamCancellationToken);
+
+                await Response.Body.FlushAsync(
+                    streamCancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+            when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogInformation(
+                "LLM streaming request was cancelled by the client. CorrelationId: {CorrelationId}",
+                HttpContext.TraceIdentifier);
         }
     }
 }

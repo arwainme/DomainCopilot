@@ -23,7 +23,6 @@ public class Document
     private Document()
     {
     }
-
     public Document(
         string title,
         string source,
@@ -31,6 +30,7 @@ public class Document
         Guid? id = null)
     {
         Id = id ?? Guid.NewGuid();
+        Title = title;
         Source = source;
         Version = version;
         Status = DocumentStatus.Pending;

@@ -1,3 +1,4 @@
+﻿using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Agents;
 using DomainCopilot.Application.DTOs;
@@ -6,15 +7,17 @@ namespace DomainCopilot.Application.Services;
 
 public sealed class RetrievalService : IRetrievalService
 {
-    private const double StrongSemanticThreshold = 0.50;
     private const double MinimumSemanticThreshold = 0.35;
     private const int MaximumLexicalScore = 8;
 
-    private readonly IReadOnlyCollection<EvidenceChunk> _chunks;
+    private readonly IDocumentRepository _documentRepository;
     private readonly ILlmProvider _llmProvider;
 
-    private readonly Dictionary<string, IReadOnlyList<float>> _embeddingCache =
-        new(StringComparer.Ordinal);
+    private IReadOnlyList<StoredChunk> _chunks =
+        Array.Empty<StoredChunk>();
+
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private bool _loaded;
 
     private static readonly HashSet<string> StopWords =
         new(StringComparer.OrdinalIgnoreCase)
@@ -54,148 +57,34 @@ public sealed class RetrievalService : IRetrievalService
     private static readonly Dictionary<string, string[]> QuerySynonyms =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["cost"] =
-            [
-                "fee",
-                "fees",
-                "charge",
-                "charges",
-                "payment",
-                "price"
-            ],
+            ["cost"] = ["fee", "fees", "charge", "charges", "payment", "price"],
+            ["price"] = ["fee", "fees", "cost", "charge", "payment"],
+            ["pay"] = ["fee", "fees", "payment", "charge", "cost"],
+            ["payment"] = ["fee", "fees", "payment", "charge", "cost"],
 
-            ["price"] =
-            [
-                "fee",
-                "fees",
-                "cost",
-                "charge",
-                "payment"
-            ],
+            ["long"] = ["processing", "timeline", "time", "duration", "deadline"],
+            ["duration"] = ["processing", "timeline", "time", "deadline"],
+            ["days"] = ["processing", "timeline", "time", "duration"],
 
-            ["pay"] =
-            [
-                "fee",
-                "fees",
-                "payment",
-                "charge",
-                "cost"
-            ],
+            ["steps"] = ["procedure", "process", "application", "apply", "submit"],
+            ["apply"] = ["application", "procedure", "process", "submit"],
+            ["application"] = ["apply", "procedure", "process", "submit"],
 
-            ["payment"] =
-            [
-                "fee",
-                "fees",
-                "payment",
-                "charge",
-                "cost"
-            ],
+            ["paperwork"] = ["documents", "document", "papers", "form"],
+            ["papers"] = ["documents", "document", "paperwork", "form"],
 
-            ["long"] =
-            [
-                "processing",
-                "timeline",
-                "time",
-                "duration",
-                "deadline"
-            ],
+            ["id"] = ["identification", "identity", "document"],
 
-            ["duration"] =
-            [
-                "processing",
-                "timeline",
-                "time",
-                "deadline"
-            ],
-
-            ["days"] =
-            [
-                "processing",
-                "timeline",
-                "time",
-                "duration"
-            ],
-
-            ["steps"] =
-            [
-                "procedure",
-                "process",
-                "application",
-                "apply",
-                "submit"
-            ],
-
-            ["apply"] =
-            [
-                "application",
-                "procedure",
-                "process",
-                "submit"
-            ],
-
-            ["application"] =
-            [
-                "apply",
-                "procedure",
-                "process",
-                "submit"
-            ],
-
-            ["paperwork"] =
-            [
-                "documents",
-                "document",
-                "papers",
-                "form"
-            ],
-
-            ["papers"] =
-            [
-                "documents",
-                "document",
-                "paperwork",
-                "form"
-            ],
-
-            ["id"] =
-            [
-                "identification",
-                "identity",
-                "document"
-            ],
-
-            ["eligible"] =
-            [
-                "eligibility",
-                "qualify",
-                "qualification",
-                "requirements"
-            ],
-
-            ["qualify"] =
-            [
-                "eligible",
-                "eligibility",
-                "qualification",
-                "requirements"
-            ]
+            ["eligible"] = ["eligibility", "qualify", "qualification", "requirements"],
+            ["qualify"] = ["eligible", "eligibility", "qualification", "requirements"]
         };
 
-    public RetrievalService(ILlmProvider llmProvider)
+    public RetrievalService(
+        IDocumentRepository documentRepository,
+        ILlmProvider llmProvider)
     {
+        _documentRepository = documentRepository;
         _llmProvider = llmProvider;
-
-        var projectRoot = FindProjectRoot();
-
-        var documentsPath = Path.Combine(
-            projectRoot,
-            "data",
-            "documents");
-
-        _chunks = LoadDocuments(documentsPath);
-
-        Console.WriteLine(
-            $"[Retrieval] Loaded {_chunks.Count} chunks from {documentsPath}");
     }
 
     public async Task<IReadOnlyList<EvidenceChunk>> SearchAsync(
@@ -210,26 +99,14 @@ public sealed class RetrievalService : IRetrievalService
             return Array.Empty<EvidenceChunk>();
         }
 
+        await EnsureLoadedAsync(cancellationToken);
+
         var terms = BuildQueryTerms(query);
 
         if (terms.Count == 0)
         {
             return Array.Empty<EvidenceChunk>();
         }
-
-        // Phase 1: lexical candidate generation.
-        // This avoids requesting embeddings for every chunk in the corpus.
-        var lexicalCandidates = _chunks
-            .Select(chunk => new
-            {
-                Chunk = chunk,
-                LexicalScore = CalculateLexicalScore(terms, chunk)
-            })
-            .Where(x => x.LexicalScore >= 1)
-            .OrderByDescending(x => x.LexicalScore)
-            .ThenBy(x => x.Chunk.ChunkId)
-            .Take(40)
-            .ToList();
 
         IReadOnlyList<float>? queryEmbedding = null;
 
@@ -247,7 +124,22 @@ public sealed class RetrievalService : IRetrievalService
                 $"Falling back to lexical retrieval: {ex.Message}");
         }
 
-        var ranked = new List<(EvidenceChunk Chunk, double Score)>();
+        var lexicalCandidates = _chunks
+            .Select(chunk => new
+            {
+                Chunk = chunk,
+                LexicalScore = CalculateLexicalScore(
+                    terms,
+                    chunk.Evidence)
+            })
+            .Where(x => x.LexicalScore >= 1)
+            .OrderByDescending(x => x.LexicalScore)
+            .ThenBy(x => x.Chunk.Evidence.ChunkId)
+            .Take(40)
+            .ToList();
+
+        var ranked =
+            new List<(EvidenceChunk Chunk, double Score)>();
 
         foreach (var candidate in lexicalCandidates)
         {
@@ -257,90 +149,164 @@ public sealed class RetrievalService : IRetrievalService
             var semanticScore = 0.0;
 
             if (queryEmbedding is not null &&
-                queryEmbedding.Count > 0)
+                queryEmbedding.Count > 0 &&
+                candidate.Chunk.Embedding is not null &&
+                candidate.Chunk.Embedding.Count > 0)
             {
-                try
-                {
-                    var chunkEmbedding =
-                        await GetEmbeddingAsync(
-                            candidate.Chunk.Content,
-                            cancellationToken);
-
-                    semanticScore =
-                        CosineSimilarity(
-                            queryEmbedding,
-                            chunkEmbedding);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(
-                        $"[Retrieval] Chunk embedding unavailable. " +
-                        $"Using lexical score for this chunk: {ex.Message}");
-                }
+                semanticScore =
+                    CosineSimilarity(
+                        queryEmbedding,
+                        candidate.Chunk.Embedding);
             }
 
             var normalizedLexical =
                 Math.Min(
-                    lexicalScore /
-                    MaximumLexicalScore,
+                    lexicalScore / (double)MaximumLexicalScore,
                     1.0);
 
-            var finalScore =
+            var hasSemantic =
                 queryEmbedding is not null &&
-                queryEmbedding.Count > 0
+                queryEmbedding.Count > 0 &&
+                candidate.Chunk.Embedding is not null &&
+                candidate.Chunk.Embedding.Count > 0;
+
+            var finalScore =
+                hasSemantic
                     ? (normalizedLexical * 0.45) +
                       (semanticScore * 0.55)
                     : normalizedLexical;
 
-            // Keep lexical evidence, or strong semantic evidence.
             if (lexicalScore >= 1 ||
                 semanticScore >= MinimumSemanticThreshold)
             {
                 ranked.Add(
-                    (candidate.Chunk, finalScore));
+                    (candidate.Chunk.Evidence, finalScore));
             }
         }
 
-        var results = ranked
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Chunk.ChunkId)
-            .Take(Math.Max(1, topK))
-            .Select(x => x.Chunk)
-            .ToList();
+        var results =
+            ranked
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Chunk.ChunkId)
+                .Take(Math.Max(1, topK))
+                .Select(x => x.Chunk)
+                .ToList();
 
         Console.WriteLine(
             $"[Retrieval] Query='{query}' " +
             $"Terms={string.Join(",", terms)} " +
-            $"LexicalCandidates={lexicalCandidates.Count} " +
+            $"PersistedChunks={_chunks.Count} " +
             $"Results={results.Count}");
 
         return results;
     }
+
+    private async Task EnsureLoadedAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_loaded)
+        {
+            return;
+        }
+
+        await _loadGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (_loaded)
+            {
+                return;
+            }
+
+            // IMPORTANT:
+            // Query the same DbContext sequentially.
+            var documents =
+                await _documentRepository.GetAllDocumentsAsync(
+                    cancellationToken);
+
+            var chunks =
+                await _documentRepository.GetAllChunksAsync(
+                    cancellationToken);
+
+            var documentTitles =
+                documents.ToDictionary(
+                    x => x.Id,
+                    x => x.Title);
+
+            var storedChunks =
+                new List<StoredChunk>();
+
+            foreach (var chunk in chunks)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (string.IsNullOrWhiteSpace(chunk.Content))
+                {
+                    continue;
+                }
+
+                var title =
+                    documentTitles.TryGetValue(
+                        chunk.DocumentId,
+                        out var documentTitle)
+                        ? documentTitle
+                        : chunk.DocumentId.ToString();
+
+                var embedding =
+                    ParseEmbedding(chunk.Embedding);
+
+                var evidence =
+                    new EvidenceChunk(
+                        chunk.Id,
+                        chunk.DocumentId,
+                        title,
+                        chunk.Content,
+                        chunk.PageNumber?.ToString());
+
+                storedChunks.Add(
+                    new StoredChunk(
+                        evidence,
+                        embedding));
+            }
+
+            _chunks = storedChunks;
+            _loaded = true;
+
+            Console.WriteLine(
+                $"[Retrieval] Loaded {_chunks.Count} persisted chunks from SQL.");
+        }
+        finally
+        {
+            _loadGate.Release();
+        }
+    }
+
     private static HashSet<string> BuildQueryTerms(
         string query)
     {
-        var terms = query
-            .Split(
-                [
-                    ' ',
-                    ',',
-                    '.',
-                    '?',
-                    '!',
-                    ':',
-                    ';',
-                    '-',
-                    '/',
-                    '(',
-                    ')'
-                ],
-                StringSplitOptions.RemoveEmptyEntries |
-                StringSplitOptions.TrimEntries)
-            .Select(x => x.ToLowerInvariant())
-            .Where(x => x.Length >= 2)
-            .Where(x => !StopWords.Contains(x))
-            .ToHashSet(
-                StringComparer.OrdinalIgnoreCase);
+        var terms =
+            query
+                .Split(
+                    [
+                        ' ',
+                        ',',
+                        '.',
+                        '?',
+                        '!',
+                        ':',
+                        ';',
+                        '-',
+                        '/',
+                        '(',
+                        ')'
+                    ],
+                    StringSplitOptions.RemoveEmptyEntries |
+                    StringSplitOptions.TrimEntries)
+                .Select(x => x.ToLowerInvariant())
+                .Where(x => x.Length >= 2)
+                .Where(x => !StopWords.Contains(x))
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
 
         var expandedTerms =
             new HashSet<string>(
@@ -398,32 +364,30 @@ public sealed class RetrievalService : IRetrievalService
         return score;
     }
 
-    private async Task<IReadOnlyList<float>> GetEmbeddingAsync(
-        string text,
-        CancellationToken cancellationToken)
+    private static IReadOnlyList<float>? ParseEmbedding(
+        string? json)
     {
-        if (_embeddingCache.TryGetValue(
-                text,
-                out var cached))
+        if (string.IsNullOrWhiteSpace(json))
         {
-            return cached;
+            return null;
         }
 
-        var embedding =
-            await _llmProvider.GenerateEmbeddingAsync(
-                text,
-                cancellationToken);
-
-        _embeddingCache[text] = embedding;
-
-        return embedding;
+        try
+        {
+            return JsonSerializer.Deserialize<float[]>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static double CosineSimilarity(
         IReadOnlyList<float> a,
         IReadOnlyList<float> b)
     {
-        if (a.Count == 0 || b.Count == 0)
+        if (a.Count == 0 ||
+            b.Count == 0)
         {
             return 0;
         }
@@ -453,69 +417,7 @@ public sealed class RetrievalService : IRetrievalService
                 Math.Sqrt(magnitudeB));
     }
 
-    private static IReadOnlyCollection<EvidenceChunk> LoadDocuments(
-        string documentsPath)
-    {
-        if (!Directory.Exists(documentsPath))
-        {
-            return Array.Empty<EvidenceChunk>();
-        }
-
-        var files = Directory
-            .GetFiles(
-                documentsPath,
-                "*.txt",
-                SearchOption.AllDirectories)
-            .Concat(
-                Directory.GetFiles(
-                    documentsPath,
-                    "*.pdf",
-                    SearchOption.AllDirectories))
-            .ToList();
-
-        var chunks = new List<EvidenceChunk>();
-
-        foreach (var filePath in files)
-        {
-            var ingestionService =
-                new DocumentIngestionService();
-
-            var fileChunks =
-                ingestionService
-                    .IngestAsync(filePath)
-                    .GetAwaiter()
-                    .GetResult();
-
-            chunks.AddRange(fileChunks);
-        }
-
-        return chunks;
-    }
-
-    private static string FindProjectRoot()
-    {
-        var directory =
-            new DirectoryInfo(
-                AppContext.BaseDirectory);
-
-        while (directory is not null)
-        {
-            var documentsDirectory =
-                Path.Combine(
-                    directory.FullName,
-                    "data",
-                    "documents");
-
-            if (Directory.Exists(
-                    documentsDirectory))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException(
-            "Could not find the project data/documents directory.");
-    }
+    private sealed record StoredChunk(
+        EvidenceChunk Evidence,
+        IReadOnlyList<float>? Embedding);
 }

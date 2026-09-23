@@ -12,6 +12,16 @@ public sealed class DocumentIngestionService
 {
     private const int ChunkSize = 500;
 
+    private const int EmbeddingBatchSize = 8;
+
+    private static readonly TimeSpan DelayBetweenEmbeddingBatches =
+        TimeSpan.FromSeconds(6);
+
+    private static readonly TimeSpan InitialRetryDelay =
+        TimeSpan.FromSeconds(10);
+
+    private const int MaxEmbeddingAttempts = 4;
+
     private readonly IDocumentRepository _documentRepository;
     private readonly ILlmProvider _llmProvider;
 
@@ -21,6 +31,58 @@ public sealed class DocumentIngestionService
     {
         _documentRepository = documentRepository;
         _llmProvider = llmProvider;
+    }
+
+    // Extraction/chunking only.
+    // Used by retrieval at startup without database writes or embeddings.
+    public IReadOnlyList<EvidenceChunk> ExtractAndChunk(
+        string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException(
+                "Document was not found.",
+                filePath);
+        }
+
+        var extension =
+            Path.GetExtension(filePath).ToLowerInvariant();
+
+        if (extension is not ".txt" and not ".pdf")
+        {
+            throw new NotSupportedException(
+                $"Unsupported document format: {extension}");
+        }
+
+        var contentHash =
+            ComputeFileHash(filePath);
+
+        var text = extension switch
+        {
+            ".txt" => File.ReadAllText(filePath),
+
+            ".pdf" => ExtractPdfText(filePath),
+
+            _ => throw new NotSupportedException()
+        };
+
+        text = CleanText(text);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new InvalidOperationException(
+                "The document contains no readable text.");
+        }
+
+        var documentId =
+            CreateDeterministicGuid(contentHash);
+
+        return CreateChunks(
+            text,
+            documentId,
+            Path.GetFileNameWithoutExtension(filePath),
+            contentHash,
+            extension);
     }
 
     public async Task<IReadOnlyList<EvidenceChunk>> IngestAsync(
@@ -45,7 +107,8 @@ public sealed class DocumentIngestionService
                 $"Unsupported document format: {extension}");
         }
 
-        var contentHash = ComputeFileHash(filePath);
+        var contentHash =
+            ComputeFileHash(filePath);
 
         var documentId =
             CreateDeterministicGuid(contentHash);
@@ -55,7 +118,7 @@ public sealed class DocumentIngestionService
                 documentId,
                 cancellationToken);
 
-        // Same content was already ingested.
+        // Same content was already ingested successfully.
         if (existing is not null &&
             existing.Status == Domain.Enums.DocumentStatus.Completed)
         {
@@ -64,24 +127,8 @@ public sealed class DocumentIngestionService
                 cancellationToken);
         }
 
-        var text = extension switch
-        {
-            ".txt" => await File.ReadAllTextAsync(
-                filePath,
-                cancellationToken),
-
-            ".pdf" => ExtractPdfText(filePath),
-
-            _ => throw new NotSupportedException()
-        };
-
-        text = CleanText(text);
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            throw new InvalidOperationException(
-                "The document contains no readable text.");
-        }
+        var evidenceChunks =
+            ExtractAndChunk(filePath);
 
         var document =
             existing ??
@@ -105,42 +152,53 @@ public sealed class DocumentIngestionService
 
         try
         {
-            var evidenceChunks =
-                CreateChunks(
-                    text,
-                    documentId,
-                    document.Title,
-                    contentHash,
-                    extension);
-
             var persistedChunks =
                 new List<DocumentChunk>();
 
-            foreach (var evidence in evidenceChunks)
+            var texts =
+                evidenceChunks
+                    .Select(x => x.Content)
+                    .ToArray();
+
+            IReadOnlyList<IReadOnlyList<float>> embeddings;
+
+            try
+            {
+                embeddings =
+                    await GenerateEmbeddingsInBatchesAsync(
+                        texts,
+                        cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Embedding generation failed.",
+                    ex);
+            }
+
+            if (embeddings.Count != evidenceChunks.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Embedding count mismatch. " +
+                    $"Expected {evidenceChunks.Count}, " +
+                    $"received {embeddings.Count}.");
+            }
+
+            for (var i = 0; i < evidenceChunks.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                IReadOnlyList<float> embedding;
+                var evidence =
+                    evidenceChunks[i];
 
-                try
-                {
-                    embedding =
-                        await _llmProvider.GenerateEmbeddingAsync(
-                            evidence.Content,
-                            cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException(
-                        $"Embedding failed for chunk {evidence.ChunkId}.",
-                        ex);
-                }
+                var embedding =
+                    embeddings[i];
 
                 var chunk =
                     new DocumentChunk(
                         evidence.DocumentId,
                         evidence.Content,
-                        persistedChunks.Count,
+                        i,
                         pageNumber: ParsePageNumber(
                             evidence.PageNumber),
                         id: evidence.ChunkId);
@@ -174,6 +232,122 @@ public sealed class DocumentIngestionService
         }
     }
 
+    private async Task<IReadOnlyList<IReadOnlyList<float>>>
+        GenerateEmbeddingsInBatchesAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken)
+    {
+        var allEmbeddings =
+            new List<IReadOnlyList<float>>(texts.Count);
+
+        for (
+            var start = 0;
+            start < texts.Count;
+            start += EmbeddingBatchSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var batch =
+                texts
+                    .Skip(start)
+                    .Take(EmbeddingBatchSize)
+                    .ToArray();
+
+            IReadOnlyList<IReadOnlyList<float>>?
+                batchEmbeddings = null;
+
+            for (
+                var attempt = 1;
+                attempt <= MaxEmbeddingAttempts;
+                attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    batchEmbeddings =
+                        await _llmProvider
+                            .GenerateEmbeddingsAsync(
+                                batch,
+                                cancellationToken);
+
+                    if (batchEmbeddings.Count != batch.Length)
+                    {
+                        throw new InvalidOperationException(
+                            $"Embedding count mismatch inside batch. " +
+                            $"Expected {batch.Length}, " +
+                            $"received {batchEmbeddings.Count}.");
+                    }
+
+                    break;
+                }
+                catch (Exception ex)
+                    when (
+                        attempt < MaxEmbeddingAttempts &&
+                        IsRateLimitException(ex))
+                {
+                    var retryDelay =
+                        TimeSpan.FromSeconds(
+                            InitialRetryDelay.TotalSeconds *
+                            attempt);
+
+                    await Task.Delay(
+                        retryDelay,
+                        cancellationToken);
+                }
+            }
+
+            if (batchEmbeddings is null)
+            {
+                throw new InvalidOperationException(
+                    "Embedding batch did not produce a result.");
+            }
+
+            allEmbeddings.AddRange(
+                batchEmbeddings);
+
+            var isLastBatch =
+                start + batch.Length >= texts.Count;
+
+            if (!isLastBatch)
+            {
+                await Task.Delay(
+                    DelayBetweenEmbeddingBatches,
+                    cancellationToken);
+            }
+        }
+
+        return allEmbeddings;
+    }
+
+    private static bool IsRateLimitException(
+        Exception exception)
+    {
+        var message =
+            exception.ToString();
+
+        return
+            message.Contains(
+                "429",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            message.Contains(
+                "RESOURCE_EXHAUSTED",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            message.Contains(
+                "quota",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            message.Contains(
+                "rate limit",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            message.Contains(
+                "Too Many Requests",
+                StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<IReadOnlyList<EvidenceChunk>>
         ToEvidenceChunksAsync(
             Document document,
@@ -204,11 +378,13 @@ public sealed class DocumentIngestionService
         string contentHash,
         string extension)
     {
-        var chunks = new List<EvidenceChunk>();
+        var chunks =
+            new List<EvidenceChunk>();
 
-        for (var offset = 0;
-             offset < text.Length;
-             offset += ChunkSize)
+        for (
+            var offset = 0;
+            offset < text.Length;
+            offset += ChunkSize)
         {
             var length =
                 Math.Min(
@@ -257,7 +433,8 @@ public sealed class DocumentIngestionService
         }
 
         var value =
-            metadata[(index + marker.Length)..]
+            metadata[
+                (index + marker.Length)..]
                 .Split(';')[0];
 
         return int.TryParse(
@@ -270,7 +447,8 @@ public sealed class DocumentIngestionService
     private static string ExtractPdfText(
         string filePath)
     {
-        var builder = new StringBuilder();
+        var builder =
+            new StringBuilder();
 
         using var document =
             PdfDocument.Open(filePath);

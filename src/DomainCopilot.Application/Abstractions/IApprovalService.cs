@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using DomainCopilot.Application.DTOs;
+﻿using DomainCopilot.Application.DTOs;
 
 namespace DomainCopilot.Application.Abstractions;
 
@@ -21,6 +18,12 @@ public interface IApprovalService
         Guid runId,
         string officerId,
         string reason,
+        CancellationToken cancellationToken = default);
+
+    Task EditAndApproveAsync(
+        Guid runId,
+        string officerId,
+        string editedResponse,
         CancellationToken cancellationToken = default);
 }
 

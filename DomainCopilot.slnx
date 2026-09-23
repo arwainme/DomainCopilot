@@ -20,5 +20,8 @@
     <Project Path="src/DomainCopilot.Domain/DomainCopilot.Domain.csproj" />
     <Project Path="src/DomainCopilot.Infrastructure/DomainCopilot.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DomainCopilot.Integration.Tests/DomainCopilot.Integration.Tests.csproj" />
+  </Folder>
   <Project Path="tests/DomainCopilot.Domain.Tests/DomainCopilot.Domain.Tests.csproj" />
 </Solution>

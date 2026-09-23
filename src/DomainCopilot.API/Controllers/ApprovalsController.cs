@@ -59,6 +59,14 @@ public class ApprovalsController : ControllerBase
         [FromBody] RejectRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return BadRequest(new
+            {
+                message = "A rejection reason is required."
+            });
+        }
+
         var officerId = "demo-officer";
 
         await _approvalService.RejectAsync(
@@ -89,5 +97,53 @@ public class ApprovalsController : ControllerBase
         });
     }
 
+    [HttpPost("edit-and-approve")]
+    public async Task<IActionResult> EditAndApprove(
+        Guid runId,
+        [FromBody] EditAndApproveRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.EditedResponse))
+        {
+            return BadRequest(new
+            {
+                message = "Edited response is required."
+            });
+        }
+
+        var officerId = "demo-officer";
+
+        await _approvalService.EditAndApproveAsync(
+            runId,
+            officerId,
+            request.EditedResponse,
+            cancellationToken);
+
+        await _auditStore.RecordStepAsync(
+            runId,
+            "Officer",
+            "EditAndApproveResponse",
+            officerId,
+            request.EditedResponse,
+            cancellationToken);
+
+        await _auditStore.SetStatusAsync(
+            runId,
+            "Approved",
+            cancellationToken);
+
+        return Ok(new
+        {
+            runId,
+            status = "Approved",
+            officerId,
+            edited = true,
+            response = request.EditedResponse
+        });
+    }
+
     public sealed record RejectRequest(string Reason);
+
+    public sealed record EditAndApproveRequest(
+        string EditedResponse);
 }

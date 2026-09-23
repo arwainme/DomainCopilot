@@ -74,6 +74,10 @@ builder.Services.AddControllers();
 builder.Services.AddHttpClient<OpenAiLlmProvider>();
 builder.Services.AddHttpClient<LocalLlmProvider>();
 builder.Services.AddHttpClient<GeminiLlmProvider>();
+builder.Services.AddHttpClient<DomainCopilot.Infrastructure.Providers.OpenRouter.OpenRouterLlmProvider>();
+builder.Services.AddHttpClient<OpenAiLlmProvider>();
+
+
 
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 
@@ -161,4 +165,7 @@ app.MapGet("/health", () => Results.Ok(new
 //    });
 
 app.Run();
+
+
+public partial class Program { }
 

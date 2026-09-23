@@ -1,37 +1,41 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.DTOs;
+using DomainCopilot.Infrastructure.Providers.Gemini;
 using Microsoft.Extensions.Options;
 
-namespace DomainCopilot.Infrastructure.Providers.OpenAI;
+namespace DomainCopilot.Infrastructure.Providers.OpenRouter;
 
-public sealed class OpenAiLlmProvider : ILlmProvider
+public sealed class OpenRouterLlmProvider : ILlmProvider
 {
     private readonly HttpClient _httpClient;
     private readonly LlmProviderOptions _options;
     private readonly IUsageTracker _usageTracker;
+    private readonly GeminiLlmProvider _geminiProvider;
 
-    public OpenAiLlmProvider(
+    public OpenRouterLlmProvider(
         HttpClient httpClient,
         IOptions<LlmProviderOptions> options,
-        IUsageTracker usageTracker)
+        IUsageTracker usageTracker,
+        GeminiLlmProvider geminiProvider)
     {
         _httpClient = httpClient;
         _options = options.Value;
         _usageTracker = usageTracker;
+        _geminiProvider = geminiProvider;
 
-        _httpClient.BaseAddress = new Uri(
-            _options.OpenAI.BaseUrl.TrimEnd('/') + "/");
+        _httpClient.BaseAddress =
+            new Uri(_options.OpenRouter.BaseUrl.TrimEnd('/') + "/");
 
-        if (!string.IsNullOrWhiteSpace(
-                _options.OpenAI.ApiKey))
+        if (!string.IsNullOrWhiteSpace(_options.OpenRouter.ApiKey))
         {
             _httpClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue(
                     "Bearer",
-                    _options.OpenAI.ApiKey);
+                    _options.OpenRouter.ApiKey);
         }
     }
 
@@ -41,7 +45,7 @@ public sealed class OpenAiLlmProvider : ILlmProvider
     {
         var request = new
         {
-            model = _options.OpenAI.Model,
+            model = _options.OpenRouter.Model,
             messages = new[]
             {
                 new
@@ -63,26 +67,25 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             await response.Content.ReadFromJsonAsync<JsonElement>(
                 cancellationToken);
 
-        var usage = result.GetProperty("usage");
+        var inputTokens = 0;
+        var outputTokens = 0;
 
-        var inputTokens =
-            usage.GetProperty("prompt_tokens").GetInt32();
+        if (result.TryGetProperty("usage", out var usage))
+        {
+            if (usage.TryGetProperty("prompt_tokens", out var p))
+                inputTokens = p.GetInt32();
 
-        var outputTokens =
-            usage.GetProperty("completion_tokens").GetInt32();
-
-        var estimatedCost =
-            CalculateEstimatedCost(
-                inputTokens,
-                outputTokens);
+            if (usage.TryGetProperty("completion_tokens", out var c))
+                outputTokens = c.GetInt32();
+        }
 
         _usageTracker.Record(
             new LlmUsage(
-                Provider: "OpenAI",
-                Model: _options.OpenAI.Model,
+                Provider: "OpenRouter",
+                Model: _options.OpenRouter.Model,
                 InputTokens: inputTokens,
                 OutputTokens: outputTokens,
-                EstimatedCostUsd: estimatedCost));
+                EstimatedCostUsd: 0m));
 
         return result
             .GetProperty("choices")[0]
@@ -94,12 +97,12 @@ public sealed class OpenAiLlmProvider : ILlmProvider
 
     public async IAsyncEnumerable<string> StreamAsync(
         string prompt,
-        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        [EnumeratorCancellation]
         CancellationToken cancellationToken = default)
     {
         var request = new
         {
-            model = _options.OpenAI.Model,
+            model = _options.OpenRouter.Model,
             messages = new[]
             {
                 new
@@ -135,8 +138,8 @@ public sealed class OpenAiLlmProvider : ILlmProvider
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var line = await reader.ReadLineAsync(
-                cancellationToken);
+            var line =
+                await reader.ReadLineAsync(cancellationToken);
 
             if (string.IsNullOrWhiteSpace(line))
                 continue;
@@ -165,9 +168,7 @@ public sealed class OpenAiLlmProvider : ILlmProvider
             if (!delta.TryGetProperty(
                     "content",
                     out var content))
-            {
                 continue;
-            }
 
             if (content.ValueKind == JsonValueKind.String)
             {
@@ -179,84 +180,31 @@ public sealed class OpenAiLlmProvider : ILlmProvider
         }
     }
 
-    public async Task<string> CallWithToolsAsync(
+    public Task<string> CallWithToolsAsync(
         string prompt,
         IReadOnlyList<string> tools,
         CancellationToken cancellationToken = default)
     {
-        return await CompleteAsync(
-            prompt,
-            cancellationToken);
+        return CompleteAsync(prompt, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<float>> GenerateEmbeddingAsync(
+    // Keep all embeddings in the same Gemini vector space.
+    public Task<IReadOnlyList<float>> GenerateEmbeddingAsync(
         string text,
         CancellationToken cancellationToken = default)
     {
-        var request = new
-        {
-            model = _options.OpenAI.EmbeddingModel,
-            input = text
-        };
-
-        using var response = await _httpClient.PostAsJsonAsync(
-            "embeddings",
-            request,
+        return _geminiProvider.GenerateEmbeddingAsync(
+            text,
             cancellationToken);
-
-        response.EnsureSuccessStatusCode();
-
-        var result =
-            await response.Content.ReadFromJsonAsync<JsonElement>(
-                cancellationToken);
-
-        var embedding =
-            result
-                .GetProperty("data")[0]
-                .GetProperty("embedding");
-
-        return embedding
-            .EnumerateArray()
-            .Select(x => x.GetSingle())
-            .ToArray();
     }
 
-    public async Task<IReadOnlyList<IReadOnlyList<float>>>
+    public Task<IReadOnlyList<IReadOnlyList<float>>>
         GenerateEmbeddingsAsync(
             IReadOnlyList<string> texts,
             CancellationToken cancellationToken = default)
     {
-        var embeddings =
-            new List<IReadOnlyList<float>>(texts.Count);
-
-        foreach (var text in texts)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var embedding =
-                await GenerateEmbeddingAsync(
-                    text,
-                    cancellationToken);
-
-            embeddings.Add(embedding);
-        }
-
-        return embeddings;
-    }
-
-    private static decimal CalculateEstimatedCost(
-        int inputTokens,
-        int outputTokens)
-    {
-        const decimal inputPricePerMillion = 0.15m;
-        const decimal outputPricePerMillion = 0.60m;
-
-        return
-            (inputTokens / 1_000_000m) *
-            inputPricePerMillion
-            +
-            (outputTokens / 1_000_000m) *
-            outputPricePerMillion;
+        return _geminiProvider.GenerateEmbeddingsAsync(
+            texts,
+            cancellationToken);
     }
 }
-
