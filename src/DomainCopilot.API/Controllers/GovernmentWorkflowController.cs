@@ -1,9 +1,11 @@
 ﻿using DomainCopilot.Application.DTOs;
 using DomainCopilot.Application.Workflows;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DomainCopilot.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/workflows/government")]
 public sealed class GovernmentWorkflowController : ControllerBase
@@ -28,3 +30,4 @@ public sealed class GovernmentWorkflowController : ControllerBase
         return Ok(result);
     }
 }
+

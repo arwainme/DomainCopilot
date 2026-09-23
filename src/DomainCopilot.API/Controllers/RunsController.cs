@@ -1,9 +1,11 @@
 ﻿using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Workflows;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DomainCopilot.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/runs")]
 public sealed class RunsController : ControllerBase
@@ -63,3 +65,4 @@ public sealed class RunsController : ControllerBase
         });
     }
 }
+

@@ -1,8 +1,10 @@
 ﻿using DomainCopilot.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DomainCopilot.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/documents")]
 public sealed class DocumentsController : ControllerBase
@@ -88,3 +90,4 @@ public sealed class DocumentsController : ControllerBase
         }
     }
 }
+
