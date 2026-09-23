@@ -185,6 +185,43 @@ public sealed class FileAuditStore : IAuditStore
         }
     }
 
+    public async Task<IReadOnlyList<AuditRunDto>> ListRunsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var runs = new List<AuditRunDto>();
+
+        foreach (var filePath in Directory.EnumerateFiles(
+            _auditDirectory,
+            "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(
+                    filePath,
+                    cancellationToken);
+
+                var run =
+                    JsonSerializer.Deserialize<AuditRunDto>(
+                        json,
+                        _jsonOptions);
+
+                if (run is not null)
+                {
+                    runs.Add(run);
+                }
+            }
+            catch (JsonException)
+            {
+                // Ignore malformed audit files.
+            }
+        }
+
+        return runs
+            .OrderByDescending(x => x.StartedAt)
+            .ToArray();
+    }
     public async Task<AuditRunDto?> GetRunAsync(
         Guid runId,
         CancellationToken cancellationToken = default)
@@ -251,3 +288,4 @@ public sealed class FileAuditStore : IAuditStore
             $"{runId}.json");
     }
 }
+

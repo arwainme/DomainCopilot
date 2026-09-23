@@ -1,7 +1,7 @@
 using DomainCopilot.Application.Abstractions;
 using DomainCopilot.Application.Workflows;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace DomainCopilot.API.Controllers;
 
@@ -19,6 +19,20 @@ public sealed class RunsController : ControllerBase
     {
         _auditStore = auditStore;
         _replayService = replayService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetRuns(
+        CancellationToken cancellationToken)
+    {
+        var runs = await _auditStore.ListRunsAsync(
+            cancellationToken);
+
+        return Ok(new
+        {
+            count = runs.Count,
+            runs
+        });
     }
 
     [HttpGet("{runId:guid}")]
@@ -65,5 +79,3 @@ public sealed class RunsController : ControllerBase
         });
     }
 }
-
-

@@ -4,7 +4,6 @@ namespace DomainCopilot.Application.Abstractions;
 
 public interface IAuditStore
 {
-
     Task StartRunAsync(
         Guid runId,
         CitizenQuery query,
@@ -26,13 +25,17 @@ public interface IAuditStore
         Guid runId,
         string reason,
         CancellationToken cancellationToken = default);
+
     Task SetStatusAsync(
-    Guid runId,
-    string status,
-    CancellationToken cancellationToken = default);
+        Guid runId,
+        string status,
+        CancellationToken cancellationToken = default);
 
     Task<AuditRunDto?> GetRunAsync(
         Guid runId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AuditRunDto>> ListRunsAsync(
         CancellationToken cancellationToken = default);
 }
 
