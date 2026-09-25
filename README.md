@@ -2,7 +2,23 @@
 
 DomainCopilot is an Agentic RAG platform designed for government-service assistance.
 
-The system combines document ingestion, hybrid retrieval, specialized agents, LLM provider fallback, human approval, audit/replay, streaming, authentication, and persistent run history.
+The system combines document ingestion, hybrid retrieval, specialized agents, LLM provider fallback, human approval, audit and replay, streaming, authentication, and persistent workflow history.
+
+## Project Videos
+
+### DomainCopilot Project Presentation
+
+A walkthrough of the DomainCopilot platform, its architecture, main features, and the implemented Agentic RAG government-service workflow.
+
+[Watch the Project Presentation](https://youtu.be/Y7pCvtqC47E?si=L5mqK7f-3olEHhXo)
+
+### How RAG Finds the Right Information
+
+A short explanation of how a RAG system uses chunking, retrieval, evidence, grounded answers, and citations to find relevant information from documents.
+
+[Watch the RAG Explanation](https://youtu.be/DSOE5yN5Hz0)
+
+---
 
 ## Project Goal
 
@@ -34,17 +50,17 @@ The system is designed to reduce unsupported claims by grounding responses in in
 
 The platform contains specialized agents:
 
-* **Eligibility Identifier**
-* **Procedure Resolver**
-* **Response Drafter**
+* Eligibility Identifier
+* Procedure Resolver
+* Response Drafter
 
-The workflow orchestrates these agents and the supporting tools.
+The workflow orchestrates these agents together with retrieval and approval tools.
 
 ### RAG and Hybrid Retrieval
 
 Documents are ingested, cleaned, chunked, embedded, and indexed.
 
-Retrieval combines:
+Retrieval combines lexical and semantic relevance:
 
 ```text
 45% Lexical Score
@@ -67,16 +83,17 @@ Supported formats:
 
 The ingestion pipeline provides:
 
-* text extraction
-* text cleaning
-* deterministic document IDs
-* chunk creation
-* embedding generation
-* persisted chunks
-* persisted embeddings
-* idempotent re-ingestion
-* processing/completed/failed document states
-* batching and retry/backoff for embedding rate limits
+* Text extraction
+* Text cleaning
+* Deterministic document IDs
+* Chunk creation
+* Embedding generation
+* Persisted chunks
+* Persisted embeddings
+* Idempotent re-ingestion
+* Processing, completed, and failed document states
+* Batching
+* Retry and backoff for embedding rate limits
 
 Current demonstration corpus:
 
@@ -112,10 +129,10 @@ LLM access is abstracted behind `ILlmProvider`.
 
 The abstraction supports:
 
-* completion
-* streaming
-* tool calls
-* embeddings
+* Completion
+* Streaming
+* Tool calls
+* Embeddings
 
 Current providers:
 
@@ -168,13 +185,13 @@ These credentials are for local demonstration only and must not be used in produ
 
 The system records:
 
-* correlation IDs
-* run IDs
-* provider/model information
-* token usage where available
-* estimated usage cost where applicable
-* persisted run history
-* audit events
+* Correlation IDs
+* Run IDs
+* Provider and model information
+* Token usage where available
+* Estimated usage cost where applicable
+* Persisted run history
+* Audit events
 
 Health endpoint:
 
@@ -206,22 +223,22 @@ DomainCopilot
 
 Contains:
 
-* entities
-* enums
-* domain rules
+* Entities
+* Enums
+* Domain rules
 
 ### Application
 
 Contains:
 
-* use cases
-* workflows
-* agents
+* Use cases
+* Workflows
+* Agents
 * DTOs
-* abstractions
-* retrieval services
-* ingestion services
-* approval logic
+* Abstractions
+* Retrieval services
+* Ingestion services
+* Approval logic
 
 ### Infrastructure
 
@@ -230,10 +247,10 @@ Contains:
 * SQL Server persistence
 * EF Core
 * LLM providers
-* embedding providers
-* retrieval implementation
-* audit persistence
-* external integrations
+* Embedding providers
+* Retrieval implementation
+* Audit persistence
+* External integrations
 
 ### API
 
@@ -241,10 +258,10 @@ Contains:
 
 * HTTP controllers
 * JWT authentication
-* authorization
-* middleware
+* Authorization
+* Middleware
 * SSE streaming
-* health endpoints
+* Health endpoints
 
 Dependency direction:
 
@@ -499,7 +516,7 @@ http://localhost:5035
 
 ## Docker Compose
 
-Docker Compose configuration is included for containerized execution.
+Docker Compose configuration is included for containerized execution:
 
 ```text
 docker-compose.yml
@@ -545,17 +562,17 @@ Security controls and threat considerations are documented in:
 docs/SECURITY.md
 ```
 
-The security documentation covers areas including:
+The security documentation covers:
 
-* authentication
-* authorization
-* secret management
-* prompt injection
-* input validation
-* sensitive endpoint protection
-* logging considerations
+* Authentication
+* Authorization
+* Secret management
+* Prompt injection
+* Input validation
+* Sensitive endpoint protection
+* Logging considerations
 * LLM-specific risks
-* secret scanning
+* Secret scanning
 
 Secrets must remain outside source control.
 
@@ -580,32 +597,32 @@ The repository also uses protected branch rules and GitHub issue/milestone track
 Core platform capabilities currently demonstrated:
 
 ```text
-✅ Clean Architecture
-✅ Government agentic workflow
-✅ Real PDF/TXT ingestion
-✅ Idempotent ingestion
-✅ 30-document corpus
-✅ 972 persisted chunks
-✅ Persisted embeddings
-✅ Hybrid retrieval
-✅ Exact evidence metadata/citations
-✅ Specialized agents
-✅ Tool-based orchestration
-✅ Officer approval
-✅ Edit-and-approve
-✅ Audit persistence
-✅ Run replay
-✅ JWT authentication
-✅ Role-based authorization
-✅ SSE streaming
-✅ Multiple LLM providers
-✅ SQL Server persistence
-✅ EF Core migrations
-✅ Unit tests
-✅ Integration tests
-✅ Security documentation
-✅ GitHub Actions
-✅ Branch protection
+Clean Architecture
+Government agentic workflow
+Real PDF/TXT ingestion
+Idempotent ingestion
+30-document corpus
+972 persisted chunks
+Persisted embeddings
+Hybrid retrieval
+Exact evidence metadata/citations
+Specialized agents
+Tool-based orchestration
+Officer approval
+Edit-and-approve
+Audit persistence
+Run replay
+JWT authentication
+Role-based authorization
+SSE streaming
+Multiple LLM providers
+SQL Server persistence
+EF Core migrations
+Unit tests
+Integration tests
+Security documentation
+GitHub Actions
+Branch protection
 ```
 
 Remaining delivery work includes final documentation polish, teaching material, deployment verification, final evaluation refresh, and fresh-clone verification.
@@ -668,15 +685,15 @@ The project follows:
 
 * Clean Architecture
 * SOLID principles
-* dependency inversion
-* typed contracts
-* provider abstraction
-* human-in-the-loop approval
-* evidence-grounded generation
-* explicit auditability
-* secure secret handling
-* automated testing
-* incremental Git-based development
+* Dependency inversion
+* Typed contracts
+* Provider abstraction
+* Human-in-the-loop approval
+* Evidence-grounded generation
+* Explicit auditability
+* Secure secret handling
+* Automated testing
+* Incremental Git-based development
 
 ---
 
